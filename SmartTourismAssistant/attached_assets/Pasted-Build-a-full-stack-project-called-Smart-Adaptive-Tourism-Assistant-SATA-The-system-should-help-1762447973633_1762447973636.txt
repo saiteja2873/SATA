@@ -1,0 +1,73 @@
+Build a full-stack project called "Smart Adaptive Tourism Assistant (SATA)".
+
+The system should help tourists plan trips intelligently using AI, blockchain, and navigation tools.
+
+Core modules to implement:
+
+🧠 Overcrowding Forecasting (Machine Learning):
+
+Use sample dataset of tourist attractions with columns like place_name, date, weather, visitor_count.
+
+Train a simple ML model (e.g., Random Forest or LSTM) to forecast crowd levels for a selected attraction and date.
+
+🗺️ Smart Route Planning (NaVIC API or Google Maps API):
+
+Create a route planner that suggests optimal paths between attractions.
+
+Should adapt dynamically to weather or traffic (mock this data if live API isn’t available).
+
+🔗 Blockchain-Based Reviews:
+
+Use Ethereum or a simulated blockchain (e.g., Ganache or local JSON chain) to store verified reviews and transaction data.
+
+Each review should include reviewer ID, rating, and comment.
+
+🎭 Cultural Recommendation Engine (AI-based):
+
+Use NLP to recommend nearby festivals or local events based on user interests.
+
+Can use a small dataset of cultural events (with columns like city, event_name, event_date, tags).
+
+🌍 Low-Resource Data Handling:
+
+Demonstrate data augmentation or transfer learning for regions with sparse data.
+
+Frontend: React (for web) or Flutter (for mobile) – include pages for:
+
+Home (overview + AI recommendations)
+
+Route planner
+
+Attractions forecast
+
+Reviews (blockchain-based)
+
+Events / Cultural insights
+
+Backend: Python (FastAPI or Flask)
+
+Integrate the ML models and blockchain module.
+
+Provide REST APIs for forecasts, routes, and cultural suggestions.
+
+Database: MongoDB or PostgreSQL.
+
+Goal: Show a working prototype that demonstrates:
+
+Forecasting crowd levels.
+
+Route optimization.
+
+Verified blockchain-based reviews.
+
+Cultural recommendations using AI.
+
+Deliverables:
+
+/frontend folder for React or Flutter UI.
+
+/backend folder for APIs, ML models, and blockchain logic.
+
+Example datasets for testing each module.
+
+Bonus: Add a dashboard showing real-time analytics (charts for visitor load, route efficiency, event recommendations).
