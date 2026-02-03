@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReviewCard from "@/components/ReviewCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,183 +12,227 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ShieldCheck, Star } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useLocation } from "@/context/location-context";
+
+type Review = {
+  id: number;
+  reviewerName: string;
+  rating: number;
+  comment: string;
+  blockchainHash: string;
+  verified: boolean;
+};
 
 export default function Reviews() {
+  const { location } = useLocation(); // 🌍 global location
   const [rating, setRating] = useState("5");
   const [comment, setComment] = useState("");
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const reviews = [
-    {
-      id: "1",
-      reviewerName: "Sarah Johnson",
-      rating: 5,
-      comment: "Amazing experience! The crowd forecast was spot-on and helped us plan our visit perfectly. Highly recommend using this platform for trip planning.",
-      blockchainHash: "0x7a3f9c2e1d8b6f4a5c9e2d1b8f6a3c9e2d1b8f6a",
-      verified: true,
-    },
-    {
-      id: "2",
-      reviewerName: "Michael Chen",
-      rating: 4,
-      comment: "Very useful tool for avoiding crowds. The route optimization feature saved us hours of walking. Great AI recommendations too!",
-      blockchainHash: "0x9d2f7e5a4b8c1f3d6e9a2c5b8f1d4e7a3c6b9f2e",
-      verified: true,
-    },
-    {
-      id: "3",
-      reviewerName: "Emma Rodriguez",
-      rating: 5,
-      comment: "The cultural event recommendations were fantastic! Discovered local festivals we wouldn't have found otherwise. Blockchain verification gives me confidence in reviews.",
-      blockchainHash: "0x3c8f1d6e9a2b5f4c7e1a8d3b6f9c2e5a1d4b7f8e",
-      verified: true,
-    },
-  ];
+  // 🔹 Fetch reviews (geo-aware)
+  const fetchReviews = async () => {
+    try {
+      const url = location
+        ? `/api/reviews/nearby?lat=${location.lat}&lng=${location.lng}`
+        : `/api/reviews`;
 
-  const handleSubmit = () => {
-    console.log("Submit review:", { rating, comment });
-    setComment("");
+      const res = await fetch(url);
+      const data = await res.json();
+
+      const mapped: Review[] = data.map((r: any) => ({
+        id: r.id,
+        reviewerName: r.name,
+        rating: r.rating,
+        comment: r.review,
+        blockchainHash: r.blockchainHash,
+        verified: true,
+      }));
+
+      setReviews(mapped);
+    } catch (err) {
+      console.error("Failed to fetch reviews", err);
+    }
+  };
+
+  // 🔁 Refetch when location changes
+  useEffect(() => {
+    fetchReviews();
+  }, [location]);
+
+  // 🔹 Submit review (geo + blockchain ready)
+  const handleSubmit = async () => {
+    if (!comment.trim() || !location) return;
+
+    setLoading(true);
+
+    try {
+      await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Anonymous User",
+          rating: Number(rating),
+          review: comment,
+          placeName: location.placeName || "Unknown place",
+          latitude: location.lat,
+          longitude: location.lng,
+        }),
+      });
+
+      setComment("");
+      setRating("5");
+      await fetchReviews();
+    } catch (err) {
+      console.error("Failed to submit review", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="space-y-6 p-6">
+      {/* HEADER */}
       <div>
         <h1 className="mb-2 text-4xl font-bold">Blockchain Reviews</h1>
         <p className="text-muted-foreground">
-          Verified, tamper-proof reviews stored on the blockchain
+          {location
+            ? `Showing reviews near ${location.placeName}`
+            : "Verified, tamper-proof reviews stored on the blockchain"}
         </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
+        {/* LEFT COLUMN */}
         <div className="space-y-6 lg:col-span-2">
+          {/* WRITE REVIEW */}
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-primary" />
                 <CardTitle>Write a Review</CardTitle>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Your review will be verified and stored on the blockchain
-              </p>
             </CardHeader>
+
             <CardContent className="space-y-4">
+              {/* Rating */}
               <div className="space-y-2">
-                <Label htmlFor="rating">Rating</Label>
+                <Label>Rating</Label>
                 <Select value={rating} onValueChange={setRating}>
-                  <SelectTrigger id="rating" data-testid="select-rating">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="5">
-                      <div className="flex items-center gap-2">
-                        <span>5 Stars</span>
-                        <div className="flex">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <Star key={i} className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                          ))}
+                    {[5, 4, 3, 2, 1].map((v) => (
+                      <SelectItem key={v} value={String(v)}>
+                        <div className="flex items-center gap-2">
+                          <span>{v} Stars</span>
+                          <div className="flex">
+                            {Array.from({ length: v }).map((_, i) => (
+                              <Star
+                                key={i}
+                                className="h-3 w-3 fill-yellow-400 text-yellow-400"
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="4">4 Stars</SelectItem>
-                    <SelectItem value="3">3 Stars</SelectItem>
-                    <SelectItem value="2">2 Stars</SelectItem>
-                    <SelectItem value="1">1 Star</SelectItem>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Comment */}
               <div className="space-y-2">
-                <Label htmlFor="comment">Review</Label>
+                <Label>Review</Label>
                 <Textarea
-                  id="comment"
-                  placeholder="Share your experience..."
+                  placeholder={
+                    location
+                      ? `Share your experience at ${location.placeName}...`
+                      : "Enable location to write a review"
+                  }
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   rows={4}
-                  data-testid="input-review-comment"
+                  disabled={!location}
                 />
               </div>
+
               <Button
                 onClick={handleSubmit}
+                disabled={loading || !location}
                 className="w-full"
-                data-testid="button-submit-review"
               >
-                Submit Review
+                {loading
+                  ? "Submitting..."
+                  : location
+                  ? "Submit Review"
+                  : "Enable Location First"}
               </Button>
             </CardContent>
           </Card>
 
+          {/* REVIEWS LIST */}
           <div className="space-y-4">
             <h2 className="text-2xl font-bold">Recent Reviews</h2>
+
+            {reviews.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No reviews nearby. Be the first to review this place!
+              </p>
+            )}
+
             {reviews.map((review) => (
-              <ReviewCard key={review.id} {...review} />
+              <ReviewCard key={review.id} {...review} id={String(review.id)} />
             ))}
           </div>
         </div>
 
+        {/* RIGHT COLUMN */}
         <div className="space-y-6">
+          {/* COMMUNITY TRUST */}
           <Card>
             <CardHeader>
-              <CardTitle>Blockchain Stats</CardTitle>
+              <CardTitle>Community Trust Score</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Based on verified, tamper-proof reviews
+              </p>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Total Reviews</p>
-                <p className="text-3xl font-bold" data-testid="text-total-reviews">1,247</p>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Verified Reviews</p>
-                <p className="text-3xl font-bold text-green-600 dark:text-green-400" data-testid="text-verified-reviews">1,247</p>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Average Rating</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-3xl font-bold" data-testid="text-avg-rating">4.8</p>
-                  <div className="flex">
+
+            <CardContent className="space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="text-5xl font-bold text-primary">4.8</div>
+                <div>
+                  <div className="flex items-center">
                     {Array.from({ length: 5 }).map((_, i) => (
                       <Star
                         key={i}
-                        className={`h-5 w-5 ${
-                          i < 5 ? "fill-yellow-400 text-yellow-400" : "text-muted"
-                        }`}
+                        className="h-5 w-5 fill-yellow-400 text-yellow-400"
                       />
                     ))}
                   </div>
+                  <p className="text-sm text-muted-foreground">
+                    Average rating from verified users
+                  </p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Why Blockchain?</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium">Tamper-Proof</p>
-                  <p className="text-sm text-muted-foreground">
-                    Reviews cannot be altered or deleted
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium">Verified Authors</p>
-                  <p className="text-sm text-muted-foreground">
-                    All reviewers are authenticated
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium">Transparent</p>
-                  <p className="text-sm text-muted-foreground">
-                    Full transaction history available
-                  </p>
-                </div>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ["100% Verified", "Cryptographically secured"],
+                  ["Tamper-Proof", "Hash-chained records"],
+                ].map(([title, desc]) => (
+                  <div
+                    key={title}
+                    className="flex items-center gap-2 rounded-lg border p-3"
+                  >
+                    <ShieldCheck className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="text-sm font-medium">{title}</p>
+                      <p className="text-xs text-muted-foreground">{desc}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
