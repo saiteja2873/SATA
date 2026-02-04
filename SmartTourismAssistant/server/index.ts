@@ -1,8 +1,16 @@
+// import path from "path";
+// import dotenv from "dotenv";
+
+// 🔒 Force-load .env explicitly
+// dotenv.config({
+//   path: path.join(__dirname, ".env")
+// });
+
+console.log("ENV CHECK:", process.env.GEMINI_API_KEY);
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import dotenv from "dotenv";
-dotenv.config();
 
 
 const app = express();

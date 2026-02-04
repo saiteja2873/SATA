@@ -13,7 +13,7 @@ import Forecast from "@/pages/Forecast";
 import RoutePlanner from "@/pages/RoutePlanner";
 import Reviews from "@/pages/Reviews";
 import Events from "@/pages/Events";
-import Location from "@/pages/Location";
+// import Location from "@/pages/Location";
 
 function Router() {
   return (
@@ -23,7 +23,7 @@ function Router() {
       <Route path="/routes" component={RoutePlanner} />
       <Route path="/reviews" component={Reviews} />
       <Route path="/events" component={Events} />
-      <Route path="/location" component={Location} />
+      {/* <Route path="/location" component={Location} /> */}
       <Route component={NotFound} />
     </Switch>
   );
