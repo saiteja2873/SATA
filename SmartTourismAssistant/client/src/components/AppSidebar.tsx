@@ -1,4 +1,4 @@
-import { Home, MapPin, TrendingUp, Star, Calendar } from "lucide-react";
+import { Home, MapPin, TrendingUp, Star, Calendar, Sparkles } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -16,6 +16,11 @@ const menuItems = [
     title: "Home",
     url: "/",
     icon: Home,
+  },
+  {
+    title: "Recommendations",
+    url: "/recommendations",
+    icon: Sparkles,
   },
   {
     title: "Crowd Forecast",
