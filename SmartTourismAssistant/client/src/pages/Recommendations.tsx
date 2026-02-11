@@ -76,7 +76,7 @@ export default function Recommendations() {
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Discover Places</h1>
         <p className="text-muted-foreground">
-          AI-powered recommendations with real-time crowd levels
+          Personalized recommendations with real-time crowd levels
         </p>
       </div>
 

@@ -72,7 +72,7 @@ export default function Home() {
             testId="stat-weather-alerts"
           />
           <StatCard
-            title="AI Recommendations"
+            title="Recommendations"
             value="18"
             icon={Sparkles}
             trend="Based on your interests"

@@ -2,19 +2,26 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // 🔍 Optional debug (remove later)
 console.log(
-  "Gemini key loaded:",
+  "Gemini key loaded at import time:",
   process.env.GEMINI_API_KEY ? "YES" : "NO"
 );
 
-if (!process.env.GEMINI_API_KEY) {
-  throw new Error("GEMINI_API_KEY is missing in environment variables");
+let genAI: InstanceType<typeof GoogleGenerativeAI>;
+let model: ReturnType<InstanceType<typeof GoogleGenerativeAI>['getGenerativeModel']>;
+
+// Initialize Gemini only when needed (lazy initialization)
+function getModel() {
+  if (!genAI) {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is missing in environment variables");
+    }
+    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash" // ✅ SAFE MODEL
+    });
+  }
+  return model;
 }
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-const model = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash" // ✅ SAFE MODEL
-});
 
 const PROMPT = `
 You are a data extraction system.
@@ -48,6 +55,7 @@ Schema:
 `;
 
 export async function extractFeaturesFromQuery(query: string) {
+  const model = getModel();
   const result = await model.generateContent([PROMPT, query]);
   const text = result.response.text();
 

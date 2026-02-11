@@ -26,7 +26,7 @@ export default function HeroSection() {
           Plan Your Smart Journey
         </h1>
         <p className="mb-8 max-w-2xl text-lg text-white/90 md:text-xl">
-          AI-powered travel insights with crowd forecasting, optimized routes, and cultural recommendations
+          Smart travel insights with crowd forecasting, optimized routes, and cultural recommendations
         </p>
         
         <div className="mb-6 flex w-full max-w-3xl flex-col gap-4 md:flex-row">
@@ -66,7 +66,7 @@ export default function HeroSection() {
           className="backdrop-blur-sm bg-white/20 border-white/30 text-white hover:bg-white/30"
           data-testid="button-cta"
         >
-          Explore AI Recommendations
+          Explore Recommendations
         </Button>
       </div>
     </div>
