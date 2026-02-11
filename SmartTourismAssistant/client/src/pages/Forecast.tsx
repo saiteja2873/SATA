@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import ForecastGauge from "@/components/ForecastGauge";
 import CrowdChart from "@/components/CrowdChart";
 import { Badge } from "@/components/ui/badge";
-import { Cloud, Sun, CloudRain, Loader2, AlertCircle } from "lucide-react";
+import { Cloud, Sun, CloudRain, Loader2, AlertCircle, MapPin } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -44,18 +44,23 @@ interface ForecastData {
   insights: string;
 }
 
-const ATTRACTIONS = [
-  { id: "charminar", name: "Charminar", lat: 17.3616, lng: 78.4747 },
-  { id: "golconda", name: "Golconda Fort", lat: 17.3833, lng: 78.4011 },
-  { id: "ramoji", name: "Ramoji Film City", lat: 17.2543, lng: 78.6808 },
-  { id: "hussain-sagar", name: "Hussain Sagar Lake", lat: 17.4239, lng: 78.4738 },
-  { id: "qutub-shahi", name: "Qutub Shahi Tombs", lat: 17.3937, lng: 78.3899 },
-];
+interface Attraction {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  city?: string;
+  state?: string;
+  country?: string;
+  distanceKm?: number;
+}
 
 export default function Forecast() {
-  const [selectedAttraction, setSelectedAttraction] = useState(ATTRACTIONS[0].id);
+  const [selectedAttraction, setSelectedAttraction] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState("");
   const [shouldFetch, setShouldFetch] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
 
   // Set default date to today
   useEffect(() => {
@@ -64,7 +69,52 @@ export default function Forecast() {
     }
   }, []);
 
-  const attraction = ATTRACTIONS.find(a => a.id === selectedAttraction);
+  // Auto-request user location on component mount
+  useEffect(() => {
+    if (!userLocation && !locationLoading) {
+      setLocationLoading(true);
+      if (!navigator.geolocation) {
+        setLocationLoading(false);
+        console.error("Geolocation is not supported by your browser.");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+          setLocationLoading(false);
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+          setLocationLoading(false);
+        }
+      );
+    }
+  }, []);
+
+  const { data: attractionsData, isLoading: attractionsLoading, error: attractionsError, refetch: refetchAttractions } = useQuery<{ attractions: Attraction[] }>({
+    queryKey: ["attractions", userLocation],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        ...(userLocation && { lat: String(userLocation.lat), lng: String(userLocation.lng) }),
+      });
+
+      const res = await apiRequest("GET", `/api/attractions?${params.toString()}`);
+      return res.json() as Promise<{ attractions: Attraction[] }>;
+    },
+  });
+
+  const attractions = attractionsData?.attractions ?? [];
+  const attraction = attractions.find(a => a.id === selectedAttraction) || null;
+
+  useEffect(() => {
+    if (!selectedAttraction && attractions.length > 0) {
+      setSelectedAttraction(attractions[0].id);
+    }
+  }, [attractions, selectedAttraction]);
 
   const { data: forecastData, isLoading, error, refetch } = useQuery<ForecastData>({
     queryKey: ["crowdForecast", selectedAttraction, selectedDate],
@@ -107,20 +157,27 @@ export default function Forecast() {
             <div className="space-y-2">
               <Label htmlFor="attraction">Attraction</Label>
               <Select
-                value={selectedAttraction}
+                value={selectedAttraction || ""}
                 onValueChange={setSelectedAttraction}
               >
                 <SelectTrigger id="attraction" data-testid="select-attraction">
                   <SelectValue placeholder="Select attraction" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ATTRACTIONS.map(attr => (
+                  {attractions.map(attr => (
                     <SelectItem key={attr.id} value={attr.id}>
                       {attr.name}
+                      {attr.distanceKm !== undefined ? ` (${attr.distanceKm} km)` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {attractionsLoading && (
+                <p className="text-xs text-muted-foreground">Loading nearby attractions...</p>
+              )}
+              {attractionsError && (
+                <p className="text-xs text-red-600">Failed to load attractions. Try again.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="date">Date</Label>
@@ -137,7 +194,7 @@ export default function Forecast() {
                 onClick={handleForecast}
                 className="w-full"
                 data-testid="button-generate-forecast"
-                disabled={isLoading || !selectedDate}
+                disabled={isLoading || !selectedDate || !attraction || attractionsLoading}
               >
                 {isLoading ? (
                   <>
@@ -150,6 +207,22 @@ export default function Forecast() {
               </Button>
             </div>
           </div>
+          {userLocation && (
+            <div className="flex items-center gap-2 rounded-lg bg-green-50 p-2">
+              <MapPin className="h-4 w-4 text-green-600" />
+              <span className="text-sm text-green-700">
+                Location detected - showing attractions near you
+              </span>
+            </div>
+          )}
+          {!userLocation && locationLoading && (
+            <div className="flex items-center gap-2 rounded-lg bg-blue-50 p-2">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+              <span className="text-sm text-blue-700">
+                Getting your location...
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
