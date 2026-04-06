@@ -1,69 +1,78 @@
-import { Search, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useState } from "react";
-import heroImage from "@assets/generated_images/Hero_beach_destination_panorama_c0b7d71f.png";
+import { useState, useEffect, useCallback } from "react";
+import { useLocation } from "wouter";
+import santorini from "@assets/generated_images/Santorini_Greece_attraction_2db60e3b.png";
+import heroBeach from "@assets/generated_images/Hero_beach_destination_panorama_c0b7d71f.png";
+import eiffelTower from "@assets/generated_images/Eiffel_Tower_attraction_photo_976726da.png";
+import machuPicchu from "@assets/generated_images/Machu_Picchu_attraction_photo_668a9cd9.png";
+import tajMahal from "@assets/generated_images/Taj_Mahal_attraction_photo_6e604541.png";
+
+const slides = [
+  { src: heroBeach, alt: "Tropical beach destination", caption: "Discover Stunning Beaches" },
+  { src: tajMahal, alt: "Taj Mahal, India", caption: "Explore Iconic Landmarks" },
+  { src: santorini, alt: "Santorini, Greece", caption: "Wander Through Beautiful Cities" },
+  { src: machuPicchu, alt: "Machu Picchu, Peru", caption: "Uncover Ancient Wonders" },
+  { src: eiffelTower, alt: "Eiffel Tower, Paris", caption: "Experience World-Class Attractions" },
+];
 
 export default function HeroSection() {
-  const [destination, setDestination] = useState("");
-  const [date, setDate] = useState("");
+  const [current, setCurrent] = useState(0);
+  const [, navigate] = useLocation();
 
-  const handleSearch = () => {
-    console.log("Search triggered for:", { destination, date });
-  };
+  const next = useCallback(() => setCurrent((i) => (i + 1) % slides.length), []);
+  const prev = useCallback(() => setCurrent((i) => (i - 1 + slides.length) % slides.length), []);
+
+  // Auto-advance every 5 seconds
+  useEffect(() => {
+    const timer = setInterval(next, 5000);
+    return () => clearInterval(timer);
+  }, [next]);
 
   return (
     <div className="relative h-[85vh] w-full overflow-hidden rounded-xl">
-      <img
-        src={heroImage}
-        alt="Beautiful tropical destination"
-        className="absolute inset-0 h-full w-full object-cover"
-      />
+      {/* Carousel images */}
+      {slides.map((slide, idx) => (
+        <img
+          key={idx}
+          src={slide.src}
+          alt={slide.alt}
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${
+            idx === current ? "opacity-100" : "opacity-0"
+          }`}
+        />
+      ))}
       <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/40 to-black/60" />
-      
+
+      {/* Dots */}
+      <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-3">
+        {slides.map((_, idx) => (
+          <button
+            key={idx}
+            onClick={() => setCurrent(idx)}
+            className={`h-3 cursor-pointer rounded-full transition-all hover:bg-white/80 ${
+              idx === current ? "w-9 bg-white" : "w-3 bg-white/50"
+            }`}
+            aria-label={`Go to slide ${idx + 1}`}
+          />
+        ))}
+      </div>
+
+      {/* Content */}
       <div className="relative flex h-full flex-col items-center justify-center px-6 text-center">
         <h1 className="mb-4 font-accent text-5xl font-bold text-white md:text-6xl">
           Plan Your Smart Journey
         </h1>
-        <p className="mb-8 max-w-2xl text-lg text-white/90 md:text-xl">
-          Smart travel insights with crowd forecasting, optimized routes, and cultural recommendations
+        <p className="mb-4 text-xl font-medium text-white/90 transition-opacity duration-700">
+          {slides[current].caption}
         </p>
-        
-        <div className="mb-6 flex w-full max-w-3xl flex-col gap-4 md:flex-row">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Where do you want to go?"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              className="h-12 pl-10 backdrop-blur-sm bg-white/90 dark:bg-black/50"
-              data-testid="input-destination"
-            />
-          </div>
-          <div className="relative flex-1">
-            <Calendar className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="h-12 pl-10 backdrop-blur-sm bg-white/90 dark:bg-black/50"
-              data-testid="input-date"
-            />
-          </div>
-          <Button
-            size="lg"
-            onClick={handleSearch}
-            className="h-12 px-8"
-            data-testid="button-search"
-          >
-            Get Forecast
-          </Button>
-        </div>
-        
+        <p className="mb-8 max-w-2xl text-lg text-white/80">
+          Travel insights with crowd forecasting, optimized routes, and cultural recommendations
+        </p>
+
         <Button
-          variant="outline"
           size="lg"
-          className="backdrop-blur-sm bg-white/20 border-white/30 text-white hover:bg-white/30"
+          onClick={() => navigate("/recommendations")}
+          className="h-12 px-10 text-base backdrop-blur-sm"
           data-testid="button-cta"
         >
           Explore Recommendations

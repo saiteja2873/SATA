@@ -44,7 +44,7 @@ export default function App() {
           <div className="flex h-screen w-full">
             <AppSidebar />
             <div className="flex flex-1 flex-col">
-              <header className="flex items-center justify-between gap-2 border-b p-4">
+              <header className="relative z-[1000] flex items-center justify-between gap-2 border-b p-4 bg-background">
                 <SidebarTrigger data-testid="button-sidebar-toggle" />
                 <div className="flex items-center gap-2">
                   <LocationDisplay />

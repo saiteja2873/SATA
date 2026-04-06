@@ -9,7 +9,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-// import { useLocation } from "wouter";
+import { useLocation } from "wouter";
 
 const menuItems = [
   {
@@ -50,7 +50,7 @@ const menuItems = [
 ];
 
 export default function AppSidebar() {
-  // const [location] = useLocation();
+  const [location] = useLocation();
 
   return (
     <Sidebar>
@@ -65,7 +65,7 @@ export default function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
-                    // data-active={location === item.url}
+                    data-active={location === item.url}
                     data-testid={`link-${item.title.toLowerCase().replace(" ", "-")}`}
                   >
                     <a href={item.url}>

@@ -11,7 +11,7 @@ export default function EventCardExample() {
         city="Tokyo, Japan"
         image={festivalImage}
         tags={["Cultural", "Festival", "Traditional"]}
-        aiRecommended={true}
+
       />
     </div>
   );

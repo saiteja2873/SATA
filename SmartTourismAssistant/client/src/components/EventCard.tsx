@@ -75,11 +75,7 @@ export default function EventCard({
           <h3 className="flex-1 text-lg font-semibold" data-testid={`text-event-name-${id}`}>
             {name}
           </h3>
-          {aiRecommended && (
-            <Badge className="bg-primary text-primary-foreground" data-testid={`badge-ai-${id}`}>
-              AI
-            </Badge>
-          )}
+
         </div>
         <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
           <Calendar className="h-4 w-4" />

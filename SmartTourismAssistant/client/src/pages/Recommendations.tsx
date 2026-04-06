@@ -100,13 +100,9 @@ export default function Recommendations() {
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <h1 className="text-4xl font-bold">Discover Places</h1>
-          <Badge variant="secondary" className="flex items-center gap-1">
-            <Sparkles className="h-3 w-3" />
-            AI-Powered
-          </Badge>
         </div>
         <p className="text-muted-foreground">
-          Get personalized recommendations powered by Gemini AI with crowd level insights
+          Get personalized recommendations with crowd level insights
         </p>
       </div>
 
@@ -201,7 +197,7 @@ export default function Recommendations() {
             <div className="space-y-2">
               <p className="font-semibold">{(error as Error)?.message || "Failed to fetch recommendations"}</p>
               <p className="text-sm">
-                Make sure the Gemini API key is configured in the server's .env file.
+                Please check the server configuration and try again.
               </p>
             </div>
           </AlertDescription>
@@ -246,11 +242,11 @@ export default function Recommendations() {
         <Card>
           <CardContent className="py-12 text-center">
             <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="text-lg font-semibold mb-2">AI-Powered Discovery</h3>
+            <h3 className="text-lg font-semibold mb-2">Discover New Places</h3>
             <p className="text-muted-foreground">
               Enter a search query or pick a suggestion above to get
               <br />
-              personalized place recommendations powered by Gemini AI.
+              personalized place recommendations.
             </p>
           </CardContent>
         </Card>

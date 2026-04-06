@@ -93,7 +93,7 @@ export default function LocationDisplay() {
         </Button>
       </PopoverTrigger>
       {location && (
-        <PopoverContent className="w-72" align="end">
+        <PopoverContent className="w-72 z-[1100]" align="end">
           <div className="space-y-3">
             <div>
               <p className="text-xs text-muted-foreground">Your Location</p>
@@ -128,7 +128,7 @@ export default function LocationDisplay() {
         </PopoverContent>
       )}
       {!location && !isInitialLoad && (
-        <PopoverContent className="w-72" align="end">
+        <PopoverContent className="w-72 z-[1100]" align="end">
           <div className="space-y-3">
             <p className="text-sm">Location access was denied or unavailable.</p>
             <Button

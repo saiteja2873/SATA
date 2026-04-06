@@ -111,7 +111,7 @@ export default function RecommendationCard({ place, onClick }: RecommendationCar
           <div className="flex items-start gap-2">
             <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" />
             <p className="text-sm text-primary/80 line-clamp-3">
-              {place.whyRecommended || "AI-recommended based on your search query."}
+              {place.whyRecommended || "Recommended based on your search query."}
             </p>
           </div>
         </div>

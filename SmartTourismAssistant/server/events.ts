@@ -111,7 +111,7 @@ router.get("/events", async (req: Request, res: Response) => {
 
     if (!Array.isArray(results) || results.length === 0) {
       // PredictHQ returned nothing — fall back to Gemini AI-generated events
-      console.log("📭 PredictHQ empty — using Gemini AI fallback for events");
+      console.log("📭 PredictHQ empty — using fallback event generation");
       try {
         const aiEvents = await generateAIEvents(
           Number(lat),
@@ -121,7 +121,7 @@ router.get("/events", async (req: Request, res: Response) => {
         );
         return res.json(aiEvents);
       } catch (aiErr) {
-        console.error("Gemini AI events fallback failed:", aiErr);
+        console.error("Event generation fallback failed:", aiErr);
         return res.json([]);
       }
     }
@@ -387,7 +387,7 @@ Each item schema:
     })
   );
 
-  console.log(`✅ Gemini generated ${events.length} AI events`);
+  console.log(`✅ Generated ${events.length} fallback events`);
   return events;
 }
 

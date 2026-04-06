@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 // Load .env from project root (working directory when npm run dev is executed)
 dotenv.config();
 
-console.log("ENV loaded - GEMINI_API_KEY:", process.env.GEMINI_API_KEY ? "YES" : "NO");
+
 console.log("ENV loaded - PREDICTHQ_API_KEY:", process.env.PREDICTHQ_API_KEY ? "YES" : "NO");
 
 import express, { type Request, Response, NextFunction } from "express";

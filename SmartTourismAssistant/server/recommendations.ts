@@ -73,7 +73,7 @@ router.post("/recommendations", async (req, res) => {
     // Sanitize limit
     const safeLimit = Math.min(Math.max(1, Number(limit) || 8), 15);
 
-    console.log("🤖 Generating Gemini recommendations for:", query);
+    console.log("📍 Generating recommendations for:", query);
 
     const gemini = getGeminiModel();
 
