@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
-import L, { LatLngExpression, DivIcon } from "leaflet";
+import { useEffect, useRef, useState } from "react";
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
+import L, { LatLngExpression, LatLngBounds, DivIcon } from "leaflet";
 import { Card } from "@/components/ui/card";
 import "leaflet/dist/leaflet.css";
 
@@ -17,12 +17,12 @@ interface RouteMapProps {
   userLocation?: { lat: number; lng: number };
   routeData?: {
     startLocation?: string;
-    destinations?: Array<{ name: string; lat?: number; lng?: number; description?: string }>;
+    destinations?: Array<{ name: string; lat?: number; lng?: number; description?: string; crowdLevel?: string; distanceKm?: number }>;
   };
 }
 
 // Custom icons
-const createMarkerIcon = (color: string): DivIcon => {
+const createMarkerIcon = (color: string, label?: string): DivIcon => {
   return L.divIcon({
     html: `
       <div style="
@@ -39,6 +39,7 @@ const createMarkerIcon = (color: string): DivIcon => {
         color: white;
         font-size: 12px;
       ">
+        ${label || ""}
       </div>
     `,
     iconSize: [30, 30],
@@ -46,17 +47,60 @@ const createMarkerIcon = (color: string): DivIcon => {
   });
 };
 
-const startIcon = createMarkerIcon("#3b82f6"); // blue
-const stopIcon = createMarkerIcon("#ef4444"); // red
 const userIcon = createMarkerIcon("#10b981"); // green
+
+/**
+ * Fetch actual road route geometry from OSRM (free, no API key).
+ * Takes an array of {lat, lng} waypoints and returns decoded coordinates.
+ */
+async function fetchOSRMRoute(
+  waypoints: Array<{ lat: number; lng: number }>
+): Promise<LatLngExpression[]> {
+  if (waypoints.length < 2) return [];
+
+  // OSRM expects coordinates as lng,lat pairs separated by semicolons
+  const coords = waypoints.map((p) => `${p.lng},${p.lat}`).join(";");
+  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+
+  const res = await fetch(url);
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  if (!data.routes || data.routes.length === 0) return [];
+
+  // OSRM returns GeoJSON coordinates as [lng, lat] — flip to [lat, lng] for Leaflet
+  const geojsonCoords: [number, number][] = data.routes[0].geometry.coordinates;
+  return geojsonCoords.map(([lng, lat]) => [lat, lng] as LatLngExpression);
+}
+
+/** Auto-fit the map viewport to show all points */
+function FitBounds({ points }: { points: Array<{ lat: number; lng: number }> }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (points.length === 0) return;
+
+    if (points.length === 1) {
+      map.setView([points[0].lat, points[0].lng], 14);
+      return;
+    }
+
+    const bounds = new LatLngBounds(
+      points.map((p) => [p.lat, p.lng] as [number, number])
+    );
+    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+  }, [map, points]);
+
+  return null;
+}
 
 export default function RouteMap({ stops, userLocation, routeData }: RouteMapProps) {
   const mapRef = useRef(null);
+  const [roadRoute, setRoadRoute] = useState<LatLngExpression[]>([]);
 
   // Convert stops to Stop objects if they're strings
   const convertedStops: Stop[] = stops.map((stop) => {
     if (typeof stop === "string") {
-      // Try to find corresponding destination data
       const destData = routeData?.destinations?.find((d) => d.name === stop);
       return {
         name: stop,
@@ -67,18 +111,41 @@ export default function RouteMap({ stops, userLocation, routeData }: RouteMapPro
     return stop;
   });
 
-  // Calculate bounds for all points
+  // All points with valid coords
   const allPoints = [
     ...(userLocation ? [userLocation] : []),
-    ...convertedStops.filter((stop) => stop.lat && stop.lng).map((stop) => ({ lat: stop.lat!, lng: stop.lng! })),
+    ...convertedStops.filter((s) => s.lat && s.lng).map((s) => ({ lat: s.lat!, lng: s.lng! })),
   ];
 
-  const defaultCenter: LatLngExpression = userLocation ? [userLocation.lat, userLocation.lng] : [40, 0];
+  const defaultCenter: LatLngExpression = userLocation
+    ? [userLocation.lat, userLocation.lng]
+    : [20, 78]; // Default to India center
 
-  // Get route polyline coordinates
-  const routeCoordinates: LatLngExpression[] = convertedStops
-    .filter((stop) => stop.lat && stop.lng)
-    .map((stop) => [stop.lat!, stop.lng!]);
+  // Build waypoints for OSRM: user location → stops in order
+  const waypoints = [
+    ...(userLocation ? [{ lat: userLocation.lat, lng: userLocation.lng }] : []),
+    ...convertedStops.filter((s) => s.lat && s.lng).map((s) => ({ lat: s.lat!, lng: s.lng! })),
+  ];
+
+  // Fetch real road route whenever waypoints change
+  useEffect(() => {
+    if (waypoints.length < 2) {
+      setRoadRoute([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetchOSRMRoute(waypoints).then((coords) => {
+      if (!cancelled) setRoadRoute(coords);
+    });
+    return () => { cancelled = true; };
+  }, [JSON.stringify(waypoints)]);
+
+  // Fallback straight-line if OSRM fails
+  const routeLine: LatLngExpression[] =
+    roadRoute.length > 0
+      ? roadRoute
+      : waypoints.map((p) => [p.lat, p.lng] as LatLngExpression);
 
   return (
     <Card className="h-full w-full overflow-hidden">
@@ -93,11 +160,17 @@ export default function RouteMap({ stops, userLocation, routeData }: RouteMapPro
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
 
-        {/* Draw route polyline */}
-        {routeCoordinates.length > 1 && (
+        <FitBounds points={allPoints} />
+
+        {/* Draw actual road route */}
+        {routeLine.length > 1 && (
           <Polyline
-            pathOptions={{ color: "#3b82f6", weight: 4, opacity: 0.7, dashArray: "5, 5" }}
-            positions={routeCoordinates as LatLngExpression[]}
+            pathOptions={{
+              color: "#3b82f6",
+              weight: 5,
+              opacity: 0.8,
+            }}
+            positions={routeLine}
           />
         )}
 
@@ -105,18 +178,18 @@ export default function RouteMap({ stops, userLocation, routeData }: RouteMapPro
         {userLocation && (
           <Marker position={[userLocation.lat, userLocation.lng] as LatLngExpression} icon={userIcon}>
             <Popup>
-              <div className="text-sm font-semibold">Your Location</div>
+              <div className="text-sm font-semibold">📍 Your Location</div>
             </Popup>
           </Marker>
         )}
 
-        {/* Route stop markers */}
-        {convertedStops.map((stop, index) => (
+        {/* Route stop markers with numbered icons */}
+        {convertedStops.map((stop, index) =>
           stop.lat && stop.lng ? (
             <Marker
               key={index}
               position={[stop.lat, stop.lng] as LatLngExpression}
-              icon={index === 0 ? startIcon : stopIcon}
+              icon={createMarkerIcon(index === 0 ? "#3b82f6" : "#ef4444", String(index + 1))}
             >
               <Popup>
                 <div className="text-sm">
@@ -126,11 +199,21 @@ export default function RouteMap({ stops, userLocation, routeData }: RouteMapPro
                       {routeData.destinations[index].description}
                     </div>
                   )}
+                  {routeData?.destinations?.[index]?.distanceKm && (
+                    <div className="mt-1 text-xs">
+                      📍 {routeData.destinations[index].distanceKm} km from previous
+                    </div>
+                  )}
+                  {routeData?.destinations?.[index]?.crowdLevel && (
+                    <div className="mt-1 text-xs">
+                      👥 Crowd: {routeData.destinations[index].crowdLevel}
+                    </div>
+                  )}
                 </div>
               </Popup>
             </Marker>
           ) : null
-        ))}
+        )}
       </MapContainer>
     </Card>
   );

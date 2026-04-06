@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
@@ -61,6 +62,29 @@ export default function Forecast() {
   const [shouldFetch, setShouldFetch] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [injectedAttraction, setInjectedAttraction] = useState<Attraction | null>(null);
+  const autoTriggered = useRef(false);
+
+  // Read query params from URL (e.g., from Recommendations page)
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const urlAttraction = urlParams.get("attraction");
+  const urlLat = urlParams.get("lat");
+  const urlLng = urlParams.get("lng");
+
+  // Inject attraction from URL params
+  useEffect(() => {
+    if (urlAttraction && !injectedAttraction) {
+      const id = `url-${urlAttraction.toLowerCase().replace(/\s+/g, "-")}`;
+      setInjectedAttraction({
+        id,
+        name: urlAttraction,
+        lat: urlLat ? Number(urlLat) : 0,
+        lng: urlLng ? Number(urlLng) : 0,
+      });
+      setSelectedAttraction(id);
+    }
+  }, [urlAttraction]);
 
   // Set default date to today
   useEffect(() => {
@@ -107,7 +131,11 @@ export default function Forecast() {
     },
   });
 
-  const attractions = attractionsData?.attractions ?? [];
+  const fetchedAttractions = attractionsData?.attractions ?? [];
+  // Merge injected URL attraction with fetched ones (avoid duplicates)
+  const attractions = injectedAttraction
+    ? [injectedAttraction, ...fetchedAttractions.filter(a => a.name !== injectedAttraction.name)]
+    : fetchedAttractions;
   const attraction = attractions.find(a => a.id === selectedAttraction) || null;
 
   useEffect(() => {
@@ -115,6 +143,14 @@ export default function Forecast() {
       setSelectedAttraction(attractions[0].id);
     }
   }, [attractions, selectedAttraction]);
+
+  // Auto-trigger forecast when coming from recommendations page
+  useEffect(() => {
+    if (urlAttraction && attraction && selectedDate && !autoTriggered.current) {
+      autoTriggered.current = true;
+      setShouldFetch(true);
+    }
+  }, [urlAttraction, attraction, selectedDate]);
 
   const { data: forecastData, isLoading, error, refetch } = useQuery<ForecastData>({
     queryKey: ["crowdForecast", selectedAttraction, selectedDate],

@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Loader2, MapPin, Sparkles, Star, Users, DollarSign, Clock, TrendingUp, Calendar, Navigation, Tag, X } from "lucide-react";
+import { Search, Loader2, MapPin, Sparkles, Star, Users, DollarSign, Clock, TrendingUp, Calendar, Navigation, Tag, X, BarChart3, Route } from "lucide-react";
 import RecommendationCard from "@/components/RecommendationCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -21,6 +22,7 @@ export default function Recommendations() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+  const [, navigate] = useLocation();
 
   // Auto-request location on mount
   useEffect(() => {
@@ -417,6 +419,41 @@ export default function Recommendations() {
                   </a>
                 </div>
               )}
+
+              <Separator />
+
+              {/* Crowd Forecast Button */}
+              <Button
+                className="w-full"
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    attraction: selectedPlace.name,
+                    ...(selectedPlace.location?.coordinates && {
+                      lat: String(selectedPlace.location.coordinates[1]),
+                      lng: String(selectedPlace.location.coordinates[0]),
+                    }),
+                  });
+                  setSelectedPlace(null);
+                  navigate(`/forecast?${params.toString()}`);
+                }}
+              >
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Get Crowd Forecast for {selectedPlace.name}
+              </Button>
+
+              {/* Optimized Route Button */}
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  // Navigate to Route Planner page with the selected place as a destination
+                  setSelectedPlace(null);
+                  navigate(`/routes?attraction=${encodeURIComponent(selectedPlace.name)}`);
+                }}
+              >
+                <Route className="h-4 w-4 mr-2" />
+                Get Optimized Route
+              </Button>
             </>
           )}
         </DialogContent>

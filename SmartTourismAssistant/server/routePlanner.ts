@@ -1,7 +1,18 @@
 import { Router } from "express";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { optimizeRoute, RouteNode } from "./algorithms/routeOptimizer";
 
 const router = Router();
+
+interface DestinationDetail {
+  name: string;
+  lat: number;
+  lng: number;
+  description?: string;
+  type?: string;
+  crowdLevel?: "Low" | "Medium" | "High" | "Very High";
+  rating?: number;
+}
 
 interface RouteInfo {
   startLocation: string;
@@ -11,6 +22,9 @@ interface RouteInfo {
     lng: number;
     description?: string;
     distanceKm?: number;
+    estimatedTimeMinutes?: number;
+    crowdLevel?: string;
+    order: number;
   }>;
   optimizedRoute: string[];
   totalDistance: string;
@@ -18,6 +32,13 @@ interface RouteInfo {
   directions: string;
   tips: string[];
   crowdWarnings: string[];
+  algorithm: {
+    name: string;
+    initialCost: number;
+    optimizedCost: number;
+    improvementPercent: number;
+    iterations: number;
+  };
 }
 
 // Lazy-load Gemini to ensure env vars are loaded first
@@ -72,14 +93,61 @@ router.get("/route/plan", async (req, res) => {
       destinations = await suggestNearbyAttractions(userLat, userLng);
     }
 
-    // Generate optimal route using LLM
-    const routeInfo = await generateOptimalRoute(
-      userLocation,
-      userLat,
-      userLng,
-      destinations,
-      optimize
+    // Step 1: Use LLM to get real coordinates, descriptions, and crowd info for each destination
+    const destinationDetails = await getDestinationDetails(userLat, userLng, userLocation, destinations);
+
+    // Step 2: Use our custom algorithm to optimize the route
+    const routeNodes: RouteNode[] = destinationDetails.map((d, i) => ({
+      id: `dest_${i}`,
+      name: d.name,
+      lat: d.lat,
+      lng: d.lng,
+      crowdLevel: d.crowdLevel || "Medium",
+      rating: d.rating,
+    }));
+
+    const optimized = optimizeRoute(
+      { lat: userLat, lng: userLng },
+      routeNodes
     );
+
+    // Step 3: Build the response with algorithm metadata
+    const orderedDestinations = optimized.orderedStops.map((stop, index) => {
+      const detail = destinationDetails.find(d => d.name === stop.name);
+      return {
+        name: stop.name,
+        lat: stop.lat,
+        lng: stop.lng,
+        description: detail?.description || "",
+        distanceKm: optimized.segmentDistances[index] || 0,
+        estimatedTimeMinutes: optimized.segmentDurations[index] || 0,
+        crowdLevel: stop.crowdLevel || "Medium",
+        order: index + 1,
+      };
+    });
+
+    // Generate tips using LLM (quick, non-critical)
+    const tips = await generateRouteTips(userLocation, optimized.orderedStops.map(s => s.name));
+
+    // Build crowd warnings from high-crowd stops
+    const crowdWarnings = orderedDestinations
+      .filter(d => d.crowdLevel === "High" || d.crowdLevel === "Very High")
+      .map(d => `${d.name} has ${d.crowdLevel} crowd levels — consider visiting early morning or late afternoon`);
+
+    const totalHours = Math.floor(optimized.totalEstimatedTimeMinutes / 60);
+    const totalMins = optimized.totalEstimatedTimeMinutes % 60;
+
+    const routeInfo: RouteInfo = {
+      startLocation: userLocation,
+      destinations: orderedDestinations,
+      optimizedRoute: optimized.orderedStops.map(s => s.name),
+      totalDistance: `${optimized.totalDistanceKm} km`,
+      estimatedTime: totalHours > 0 ? `${totalHours}h ${totalMins}m` : `${totalMins}m`,
+      directions: `Optimized route from ${userLocation}: ${optimized.orderedStops.map((s, i) => `${i + 1}. ${s.name}`).join(" → ")}`,
+      tips,
+      crowdWarnings,
+      algorithm: optimized.algorithm,
+    };
 
     res.json(routeInfo);
   } catch (err: any) {
@@ -111,79 +179,73 @@ Example format:
   }
 }
 
-async function generateOptimalRoute(
-  startLocation: string,
+/**
+ * Use LLM to get real-world coordinates, descriptions, and crowd info
+ * for each destination name. The LLM is used for data retrieval only —
+ * route optimization is handled by our custom algorithm.
+ */
+async function getDestinationDetails(
   userLat: number,
   userLng: number,
-  destinations: string[],
-  optimize: boolean
-): Promise<RouteInfo> {
+  locationName: string,
+  destinations: string[]
+): Promise<DestinationDetail[]> {
   const model = await getGeminiModel();
 
-  const prompt = `You are a travel route planner. Create an optimal route starting from "${startLocation}" (coordinates: ${userLat}, ${userLng}) visiting these attractions: ${destinations.join(", ")}.
+  const prompt = `You are a tourism data assistant. For each of the following attractions near ${locationName} (coordinates: ${userLat}, ${userLng}), provide factual details.
 
-${optimize ? "Optimize the route to minimize travel time and distance." : "Create a cultural/scenic route prioritizing experience over efficiency."}
+Attractions: ${destinations.join(", ")}
 
-Provide detailed response in JSON format with NO markdown code blocks:
-{
-  "startLocation": "string",
-  "destinations": [
-    {
-      "name": "string",
-      "order": number,
-      "lat": number (latitude coordinate),
-      "lng": number (longitude coordinate),
-      "estimatedDistanceKm": number,
-      "estimatedTimeMinutes": number,
-      "description": "brief description of the attraction"
-    }
-  ],
-  "optimizedRoute": ["ordered list of attraction names"],
-  "totalDistance": "string with unit (e.g., '8.4 km')",
-  "estimatedTime": "string (e.g., '2h 15m')",
-  "directions": "detailed turn-by-turn directions or general route description",
-  "tips": ["tip 1", "tip 2", "tip 3"],
-  "crowdWarnings": ["warning 1 if applicable", "warning 2 if applicable"],
-  "bestTimeToVisit": "string recommendation for when to start this route"
-}
+Return ONLY a valid JSON array, no markdown, no explanation:
+[
+  {
+    "name": "exact attraction name",
+    "lat": number (realistic latitude),
+    "lng": number (realistic longitude),
+    "description": "brief 1-line description",
+    "type": "museum|park|temple|monument|market|nature|other",
+    "crowdLevel": "Low|Medium|High|Very High",
+    "rating": number (1-5)
+  }
+]
 
 Important:
-- Include realistic map coordinates (lat/lng) for each attraction relative to the starting location
-- Keep coordinates within a reasonable radius of the starting point
-- Use realistic distances based on the coordinates
-- Provide practical travel tips
-- Note any crowd patterns or busy times
-- Output ONLY valid JSON, no explanations`;
+- Use real, accurate coordinates for each attraction
+- Crowd level should reflect typical conditions
+- Keep coordinates within reasonable radius of (${userLat}, ${userLng})`;
 
   const result = await model.generateContent(prompt);
   const text = result.response.text();
   const clean = text.replace(/```json|```/g, "").trim();
 
   try {
-    const parsedRoute = JSON.parse(clean);
+    return JSON.parse(clean) as DestinationDetail[];
+  } catch {
+    // Fallback: return destinations with approximate coordinates
+    return destinations.map((name, i) => ({
+      name,
+      lat: userLat + (Math.random() - 0.5) * 0.05,
+      lng: userLng + (Math.random() - 0.5) * 0.05,
+      description: "",
+      crowdLevel: "Medium" as const,
+    }));
+  }
+}
 
-    return {
-      startLocation,
-      destinations: parsedRoute.destinations || [],
-      optimizedRoute: parsedRoute.optimizedRoute || destinations,
-      totalDistance: parsedRoute.totalDistance || "N/A",
-      estimatedTime: parsedRoute.estimatedTime || "N/A",
-      directions: parsedRoute.directions || "Follow the suggested route in order",
-      tips: parsedRoute.tips || [],
-      crowdWarnings: parsedRoute.crowdWarnings || [],
-    };
-  } catch (parseErr) {
-    console.error("Failed to parse route response:", clean);
-    return {
-      startLocation,
-      destinations: [],
-      optimizedRoute: destinations,
-      totalDistance: "N/A",
-      estimatedTime: "N/A",
-      directions: "Unable to generate detailed route. Please try again.",
-      tips: ["Check traffic conditions before starting"],
-      crowdWarnings: [],
-    };
+/**
+ * Generate travel tips using LLM (non-critical — used for UX only).
+ */
+async function generateRouteTips(locationName: string, stopNames: string[]): Promise<string[]> {
+  try {
+    const model = await getGeminiModel();
+    const prompt = `Give 3-4 brief, practical travel tips for visiting these places in ${locationName}: ${stopNames.join(", ")}. Return ONLY a JSON array of strings, no markdown.`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const clean = text.replace(/```json|```/g, "").trim();
+    return JSON.parse(clean) as string[];
+  } catch {
+    return ["Start early to avoid crowds", "Carry water and comfortable shoes", "Check local weather before heading out"];
   }
 }
 

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import RouteMap from "@/components/RouteMap";
-import { Plus, X, Navigation, Clock, MapPin, Loader2, AlertCircle } from "lucide-react";
+import { Plus, X, Navigation, Clock, MapPin, Loader2, AlertCircle, Route, Cpu } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { apiRequest } from "@/lib/queryClient";
@@ -19,6 +19,9 @@ interface RouteData {
     estimatedDistanceKm: number;
     estimatedTimeMinutes: number;
     description?: string;
+    crowdLevel?: string;
+    lat?: number;
+    lng?: number;
   }>;
   optimizedRoute: string[];
   totalDistance: string;
@@ -26,6 +29,13 @@ interface RouteData {
   directions: string;
   tips: string[];
   crowdWarnings: string[];
+  algorithm?: {
+    name: string;
+    initialCost: number;
+    optimizedCost: number;
+    improvementPercent: number;
+    iterations: number;
+  };
 }
 
 export default function RoutePlanner() {
@@ -34,6 +44,15 @@ export default function RoutePlanner() {
   const [newStop, setNewStop] = useState("");
   const [optimize, setOptimize] = useState(true);
   const [customAttractions, setCustomAttractions] = useState<string[]>([]);
+
+  // Pick up attraction passed from Recommendations page via URL query param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const attraction = params.get("attraction");
+    if (attraction && !customAttractions.includes(attraction)) {
+      setCustomAttractions((prev) => [...prev, attraction]);
+    }
+  }, []);
 
   // Auto-request user location on component mount
   useEffect(() => {
@@ -132,14 +151,37 @@ export default function RoutePlanner() {
                 className="flex items-center gap-2 rounded-lg border p-3"
                 data-testid={`stop-${index}`}
               >
-                <MapPin className="h-4 w-4 text-primary" />
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                  {index + 1}
+                </div>
                 <div className="flex-1">
                   <span className="text-sm font-medium">{stop}</span>
                   {routeData?.destinations[index] && (
-                    <p className="text-xs text-muted-foreground">
-                      {routeData.destinations[index].estimatedDistanceKm} km •{" "}
-                      {routeData.destinations[index].estimatedTimeMinutes} min
-                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-xs text-muted-foreground">
+                        {routeData.destinations[index].estimatedDistanceKm
+                          ? `${routeData.destinations[index].estimatedDistanceKm} km`
+                          : ""}{" "}
+                        {routeData.destinations[index].estimatedTimeMinutes
+                          ? `• ${routeData.destinations[index].estimatedTimeMinutes} min`
+                          : ""}
+                      </p>
+                      {routeData.destinations[index].crowdLevel && (
+                        <Badge
+                          variant={
+                            routeData.destinations[index].crowdLevel === "Low"
+                              ? "secondary"
+                              : routeData.destinations[index].crowdLevel === "High" ||
+                                routeData.destinations[index].crowdLevel === "Very High"
+                              ? "destructive"
+                              : "outline"
+                          }
+                          className="text-[10px] px-1.5 py-0"
+                        >
+                          {routeData.destinations[index].crowdLevel}
+                        </Badge>
+                      )}
+                    </div>
                   )}
                 </div>
                 {customAttractions.includes(stop) && (
@@ -226,6 +268,45 @@ export default function RoutePlanner() {
                     {routeData.estimatedTime}
                   </span>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {routeData?.algorithm && (
+            <Card className="border-purple-500/30 bg-purple-50/50 dark:bg-purple-900/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Cpu className="h-4 w-4 text-purple-600" />
+                  Algorithm Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div>
+                  <p className="text-xs font-semibold text-purple-900 dark:text-purple-200">
+                    {routeData.algorithm.name}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Initial Cost</span>
+                  <span className="text-xs font-medium">{routeData.algorithm.initialCost} km*</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Optimized Cost</span>
+                  <span className="text-xs font-medium text-green-600">{routeData.algorithm.optimizedCost} km*</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Improvement</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {routeData.algorithm.improvementPercent}% better
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">2-opt Iterations</span>
+                  <span className="text-xs font-medium">{routeData.algorithm.iterations}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground italic">
+                  *Cost includes crowd-level weighting (penalizes high-crowd stops)
+                </p>
               </CardContent>
             </Card>
           )}
