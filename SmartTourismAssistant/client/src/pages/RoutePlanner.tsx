@@ -6,10 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import RouteMap from "@/components/RouteMap";
-import { Plus, X, Navigation, Clock, MapPin, Loader2, AlertCircle, Route, Cpu } from "lucide-react";
+import { Plus, X, Navigation, Clock, MapPin, Loader2, AlertCircle, Route } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { apiRequest } from "@/lib/queryClient";
+
+interface Place {
+  name: string;
+  description?: string;
+  rating?: number;
+  crowdLevel?: string;
+}
 
 interface RouteData {
   startLocation: string;
@@ -44,6 +51,7 @@ export default function RoutePlanner() {
   const [newStop, setNewStop] = useState("");
   const [optimize, setOptimize] = useState(true);
   const [customAttractions, setCustomAttractions] = useState<string[]>([]);
+  const [suggestedPlaces, setSuggestedPlaces] = useState<Place[]>([]);
 
   // Pick up attraction passed from Recommendations page via URL query param
   useEffect(() => {
@@ -80,7 +88,42 @@ export default function RoutePlanner() {
     }
   }, []);
 
-  const { data: routeData, isLoading: routeLoading, error: routeError, refetch } = useQuery<RouteData>({
+  // Fetch nearby attractions as suggestions
+  const { data: nearbyAttractions } = useQuery({
+    queryKey: ["nearbyAttractions", userLocation],
+    queryFn: async () => {
+      if (!userLocation) return [];
+      const params = new URLSearchParams({
+        lat: String(userLocation.lat),
+        lng: String(userLocation.lng),
+        radius_km: "50",
+        size: "8",
+      });
+      try {
+        const res = await apiRequest("GET", `/api/recommendations?${params.toString()}`);
+        const data = await res.json();
+        return data.recommendations || [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!userLocation,
+  });
+
+  useEffect(() => {
+    if (nearbyAttractions?.length) {
+      setSuggestedPlaces(
+        nearbyAttractions.slice(0, 6).map((place: any) => ({
+          name: place.name,
+          description: place.description || place.category,
+          rating: place.rating,
+          crowdLevel: place.crowdLevel,
+        }))
+      );
+    }
+  }, [nearbyAttractions]);
+
+  const { data: routeData, isLoading: routeLoading, error: routeError } = useQuery<RouteData>({
     queryKey: ["routePlan", userLocation, customAttractions, optimize],
     queryFn: async () => {
       if (!userLocation) throw new Error("Location required");
@@ -95,12 +138,13 @@ export default function RoutePlanner() {
       const res = await apiRequest("GET", `/api/route/plan?${params.toString()}`);
       return res.json() as Promise<RouteData>;
     },
-    enabled: !!userLocation,
+    enabled: !!userLocation && customAttractions.length > 0,
   });
 
-  const addStop = () => {
-    if (newStop.trim()) {
-      setCustomAttractions([...customAttractions, newStop]);
+  const addStop = (place?: string) => {
+    const stopName = place || newStop.trim();
+    if (stopName && !customAttractions.includes(stopName)) {
+      setCustomAttractions([...customAttractions, stopName]);
       setNewStop("");
     }
   };
@@ -109,15 +153,15 @@ export default function RoutePlanner() {
     setCustomAttractions(customAttractions.filter((_, i) => i !== index));
   };
 
-  const stops = routeData?.optimizedRoute || customAttractions;
+  const stops = routeData?.optimizedRoute?.length ? routeData.optimizedRoute : customAttractions;
 
   return (
     <div className="flex h-[calc(100vh-4rem)] gap-6 p-6">
       <Card className="w-full max-w-md overflow-auto">
         <CardHeader>
-          <CardTitle>Route Planning</CardTitle>
+          <CardTitle>Plan Your Route</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
           {!userLocation && locationLoading && (
             <Alert>
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -199,17 +243,26 @@ export default function RoutePlanner() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="new-stop">Add Custom Destination</Label>
+            <Label htmlFor="new-stop">Add a Place</Label>
             <div className="flex gap-2">
               <Input
                 id="new-stop"
-                placeholder="Enter location..."
+                placeholder="Type place name..."
                 value={newStop}
                 onChange={(e) => setNewStop(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addStop()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newStop.trim()) {
+                    addStop();
+                  }
+                }}
                 data-testid="input-new-stop"
               />
-              <Button onClick={addStop} size="icon" data-testid="button-add-stop">
+              <Button 
+                onClick={() => addStop()} 
+                size="icon" 
+                data-testid="button-add-stop"
+                disabled={!newStop.trim()}
+              >
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -217,9 +270,9 @@ export default function RoutePlanner() {
 
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div className="space-y-0.5">
-              <Label htmlFor="optimize">Optimize Route</Label>
+              <Label htmlFor="optimize">Optimize for Low Crowds</Label>
               <p className="text-xs text-muted-foreground">
-                Minimize travel time and distance
+                Route avoids busy places
               </p>
             </div>
             <Switch
@@ -230,30 +283,22 @@ export default function RoutePlanner() {
             />
           </div>
 
-          <Button
-            onClick={() => refetch()}
-            className="w-full"
-            size="lg"
-            data-testid="button-generate-route"
-            disabled={routeLoading}
-          >
-            {routeLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Planning Route...
-              </>
-            ) : (
-              <>
-                <Navigation className="mr-2 h-4 w-4" />
-                Generate Optimal Route
-              </>
-            )}
-          </Button>
+          {routeLoading && (
+            <Alert className="border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-900/20">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+              <AlertDescription className="text-blue-900 dark:text-blue-100">
+                Planning your route...
+              </AlertDescription>
+            </Alert>
+          )}
 
           {routeData && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Route Summary</CardTitle>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Route className="h-4 w-4" />
+                  Route Summary
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -272,44 +317,7 @@ export default function RoutePlanner() {
             </Card>
           )}
 
-          {routeData?.algorithm && (
-            <Card className="border-purple-500/30 bg-purple-50/50 dark:bg-purple-900/10">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Cpu className="h-4 w-4 text-purple-600" />
-                  Algorithm Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div>
-                  <p className="text-xs font-semibold text-purple-900 dark:text-purple-200">
-                    {routeData.algorithm.name}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Initial Cost</span>
-                  <span className="text-xs font-medium">{routeData.algorithm.initialCost} km*</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Optimized Cost</span>
-                  <span className="text-xs font-medium text-green-600">{routeData.algorithm.optimizedCost} km*</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Improvement</span>
-                  <Badge variant="secondary" className="text-xs">
-                    {routeData.algorithm.improvementPercent}% better
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">2-opt Iterations</span>
-                  <span className="text-xs font-medium">{routeData.algorithm.iterations}</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground italic">
-                  *Cost includes crowd-level weighting (penalizes high-crowd stops)
-                </p>
-              </CardContent>
-            </Card>
-          )}
+
 
           {routeData?.tips && routeData.tips.length > 0 && (
             <div className="rounded-lg border border-blue-500/50 bg-blue-50 p-4 dark:bg-blue-900/20">

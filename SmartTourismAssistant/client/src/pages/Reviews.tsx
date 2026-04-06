@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReviewCard from "@/components/ReviewCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -11,51 +13,102 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ShieldCheck, Star } from "lucide-react";
+import { ShieldCheck, Star, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { apiRequest } from "@/lib/queryClient";
+
+interface ReviewItem {
+  id: string;
+  reviewerName: string;
+  rating: number;
+  comment: string;
+  attraction: string | null;
+  blockchainHash: string;
+  previousHash: string;
+  nonce: number;
+  blockIndex: number;
+  timestamp: string;
+  verified: boolean;
+}
+
+interface ReviewStats {
+  totalReviews: number;
+  verifiedReviews: number;
+  averageRating: number;
+  chainValid: boolean;
+}
 
 export default function Reviews() {
+  const queryClient = useQueryClient();
+  const [reviewerName, setReviewerName] = useState("");
   const [rating, setRating] = useState("5");
   const [comment, setComment] = useState("");
+  const [attraction, setAttraction] = useState("");
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  const reviews = [
-    {
-      id: "1",
-      reviewerName: "Sarah Johnson",
-      rating: 5,
-      comment: "Amazing experience! The crowd forecast was spot-on and helped us plan our visit perfectly. Highly recommend using this platform for trip planning.",
-      blockchainHash: "0x7a3f9c2e1d8b6f4a5c9e2d1b8f6a3c9e2d1b8f6a",
-      verified: true,
+  // Fetch reviews from blockchain API
+  const { data: reviewsData, isLoading: reviewsLoading } = useQuery<{ reviews: ReviewItem[] }>({
+    queryKey: ["reviews"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/reviews");
+      return res.json();
     },
-    {
-      id: "2",
-      reviewerName: "Michael Chen",
-      rating: 4,
-      comment: "Very useful tool for avoiding crowds. The route optimization feature saved us hours of walking. Great AI recommendations too!",
-      blockchainHash: "0x9d2f7e5a4b8c1f3d6e9a2c5b8f1d4e7a3c6b9f2e",
-      verified: true,
+  });
+
+  // Fetch blockchain stats
+  const { data: stats } = useQuery<ReviewStats>({
+    queryKey: ["reviewStats"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/reviews/stats");
+      return res.json();
     },
-    {
-      id: "3",
-      reviewerName: "Emma Rodriguez",
-      rating: 5,
-      comment: "The cultural event recommendations were fantastic! Discovered local festivals we wouldn't have found otherwise. Blockchain verification gives me confidence in reviews.",
-      blockchainHash: "0x3c8f1d6e9a2b5f4c7e1a8d3b6f9c2e5a1d4b7f8e",
-      verified: true,
+  });
+
+  // Fetch chain verification
+  const { data: verification } = useQuery<{ valid: boolean; totalBlocks: number }>({
+    queryKey: ["reviewVerify"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/reviews/verify");
+      return res.json();
     },
-  ];
+  });
+
+  // Submit review mutation
+  const submitMutation = useMutation({
+    mutationFn: async (review: { reviewerName: string; rating: number; comment: string; attraction?: string }) => {
+      const res = await apiRequest("POST", "/api/reviews", review);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reviews"] });
+      queryClient.invalidateQueries({ queryKey: ["reviewStats"] });
+      queryClient.invalidateQueries({ queryKey: ["reviewVerify"] });
+      setComment("");
+      setAttraction("");
+      setSubmitSuccess(true);
+      setTimeout(() => setSubmitSuccess(false), 3000);
+    },
+  });
 
   const handleSubmit = () => {
-    console.log("Submit review:", { rating, comment });
-    setComment("");
+    if (!reviewerName.trim() || !comment.trim()) return;
+    submitMutation.mutate({
+      reviewerName: reviewerName.trim(),
+      rating: Number(rating),
+      comment: comment.trim(),
+      ...(attraction.trim() && { attraction: attraction.trim() }),
+    });
   };
+
+  const reviews = reviewsData?.reviews || [];
 
   return (
     <div className="space-y-6 p-6">
       <div>
         <h1 className="mb-2 text-4xl font-bold">Blockchain Reviews</h1>
         <p className="text-muted-foreground">
-          Verified, tamper-proof reviews stored on the blockchain
+          Verified, tamper-proof reviews stored on a simulated blockchain
         </p>
       </div>
 
@@ -68,10 +121,32 @@ export default function Reviews() {
                 <CardTitle>Write a Review</CardTitle>
               </div>
               <p className="text-sm text-muted-foreground">
-                Your review will be verified and stored on the blockchain
+                Your review will be mined into a block and stored on the blockchain
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="reviewerName">Your Name</Label>
+                  <Input
+                    id="reviewerName"
+                    placeholder="Enter your name..."
+                    value={reviewerName}
+                    onChange={(e) => setReviewerName(e.target.value)}
+                    data-testid="input-reviewer-name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="attraction">Attraction (optional)</Label>
+                  <Input
+                    id="attraction"
+                    placeholder="e.g., Taj Mahal"
+                    value={attraction}
+                    onChange={(e) => setAttraction(e.target.value)}
+                    data-testid="input-attraction"
+                  />
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="rating">Rating</Label>
                 <Select value={rating} onValueChange={setRating}>
@@ -79,20 +154,18 @@ export default function Reviews() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="5">
-                      <div className="flex items-center gap-2">
-                        <span>5 Stars</span>
-                        <div className="flex">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <Star key={i} className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                          ))}
+                    {[5, 4, 3, 2, 1].map((val) => (
+                      <SelectItem key={val} value={String(val)}>
+                        <div className="flex items-center gap-2">
+                          <span>{val} Star{val !== 1 ? "s" : ""}</span>
+                          <div className="flex">
+                            {Array.from({ length: val }).map((_, i) => (
+                              <Star key={i} className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="4">4 Stars</SelectItem>
-                    <SelectItem value="3">3 Stars</SelectItem>
-                    <SelectItem value="2">2 Stars</SelectItem>
-                    <SelectItem value="1">1 Star</SelectItem>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -107,18 +180,55 @@ export default function Reviews() {
                   data-testid="input-review-comment"
                 />
               </div>
+
+              {submitSuccess && (
+                <Alert className="border-green-500/50 bg-green-50 dark:bg-green-900/20">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-700 dark:text-green-300">
+                    Review mined and added to blockchain successfully!
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {submitMutation.isError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>Failed to submit review. Try again.</AlertDescription>
+                </Alert>
+              )}
+
               <Button
                 onClick={handleSubmit}
                 className="w-full"
                 data-testid="button-submit-review"
+                disabled={submitMutation.isPending || !reviewerName.trim() || !comment.trim()}
               >
-                Submit Review
+                {submitMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Mining Block...
+                  </>
+                ) : (
+                  "Submit Review"
+                )}
               </Button>
             </CardContent>
           </Card>
 
           <div className="space-y-4">
             <h2 className="text-2xl font-bold">Recent Reviews</h2>
+            {reviewsLoading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {!reviewsLoading && reviews.length === 0 && (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  No reviews yet. Be the first to submit a blockchain-verified review!
+                </CardContent>
+              </Card>
+            )}
             {reviews.map((review) => (
               <ReviewCard key={review.id} {...review} />
             ))}
@@ -133,26 +243,53 @@ export default function Reviews() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">Total Reviews</p>
-                <p className="text-3xl font-bold" data-testid="text-total-reviews">1,247</p>
+                <p className="text-3xl font-bold" data-testid="text-total-reviews">
+                  {stats?.totalReviews ?? 0}
+                </p>
               </div>
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">Verified Reviews</p>
-                <p className="text-3xl font-bold text-green-600 dark:text-green-400" data-testid="text-verified-reviews">1,247</p>
+                <p className="text-3xl font-bold text-green-600 dark:text-green-400" data-testid="text-verified-reviews">
+                  {stats?.verifiedReviews ?? 0}
+                </p>
               </div>
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">Average Rating</p>
                 <div className="flex items-center gap-2">
-                  <p className="text-3xl font-bold" data-testid="text-avg-rating">4.8</p>
+                  <p className="text-3xl font-bold" data-testid="text-avg-rating">
+                    {stats?.averageRating ?? "—"}
+                  </p>
                   <div className="flex">
                     {Array.from({ length: 5 }).map((_, i) => (
                       <Star
                         key={i}
                         className={`h-5 w-5 ${
-                          i < 5 ? "fill-yellow-400 text-yellow-400" : "text-muted"
+                          i < Math.round(stats?.averageRating || 0)
+                            ? "fill-yellow-400 text-yellow-400"
+                            : "text-muted"
                         }`}
                       />
                     ))}
                   </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Chain Integrity</p>
+                <div className="flex items-center gap-2">
+                  {verification?.valid ? (
+                    <Badge className="bg-green-600 text-white">
+                      <CheckCircle2 className="mr-1 h-3 w-3" />
+                      Valid
+                    </Badge>
+                  ) : (
+                    <Badge variant="destructive">
+                      <AlertCircle className="mr-1 h-3 w-3" />
+                      Invalid
+                    </Badge>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {verification?.totalBlocks ?? 0} blocks
+                  </span>
                 </div>
               </div>
             </CardContent>
@@ -175,9 +312,18 @@ export default function Reviews() {
               <div className="flex items-start gap-3">
                 <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />
                 <div>
-                  <p className="font-medium">Verified Authors</p>
+                  <p className="font-medium">SHA-256 Hashing</p>
                   <p className="text-sm text-muted-foreground">
-                    All reviewers are authenticated
+                    Each block is cryptographically linked to the previous one
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />
+                <div>
+                  <p className="font-medium">Proof of Work</p>
+                  <p className="text-sm text-muted-foreground">
+                    Blocks are mined with a nonce satisfying difficulty target
                   </p>
                 </div>
               </div>
@@ -186,7 +332,7 @@ export default function Reviews() {
                 <div>
                   <p className="font-medium">Transparent</p>
                   <p className="text-sm text-muted-foreground">
-                    Full transaction history available
+                    Full chain verification available via /api/reviews/verify
                   </p>
                 </div>
               </div>

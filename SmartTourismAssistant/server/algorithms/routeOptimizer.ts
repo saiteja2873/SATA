@@ -246,7 +246,8 @@ function estimateTravelTimeMinutes(distanceKm: number): number {
  */
 export function optimizeRoute(
   userLocation: { lat: number; lng: number },
-  destinations: RouteNode[]
+  destinations: RouteNode[],
+  crowdAware: boolean = true
 ): OptimizedRouteResult {
   // Build full node list with user location as node 0
   const startNode: RouteNode = {
@@ -298,9 +299,43 @@ export function optimizeRoute(
     };
   }
 
-  // Step 1: Build cost matrix (crowd-weighted) and pure distance matrix
-  const costMatrix = buildCostMatrix(allNodes);
+  // Step 1: Build cost matrix and pure distance matrix
+  // When crowdAware=true, use crowd-weighted costs for optimization (TSP reorders)
+  // When crowdAware=false, preserve user's original order (no reordering)
   const distMatrix = buildDistanceMatrix(allNodes);
+
+  if (!crowdAware) {
+    // No optimization — keep the user's insertion order
+    const userTour = allNodes.map((_, i) => i); // [0, 1, 2, 3, ...]
+    const segmentDistances: number[] = [];
+    const segmentDurations: number[] = [];
+
+    for (let i = 0; i < userTour.length - 1; i++) {
+      const dist = distMatrix[userTour[i]][userTour[i + 1]];
+      segmentDistances.push(Math.round(dist * 100) / 100);
+      segmentDurations.push(Math.round(estimateTravelTimeMinutes(dist)));
+    }
+
+    const totalDistanceKm = routeDistance(userTour, distMatrix);
+    const totalEstimatedTimeMinutes = segmentDurations.reduce((a, b) => a + b, 0);
+
+    return {
+      orderedStops: destinations,
+      totalDistanceKm: Math.round(totalDistanceKm * 100) / 100,
+      segmentDistances,
+      segmentDurations,
+      totalEstimatedTimeMinutes,
+      algorithm: {
+        name: "User-defined order (no optimization)",
+        initialCost: routeDistance(userTour, distMatrix),
+        optimizedCost: routeDistance(userTour, distMatrix),
+        improvementPercent: 0,
+        iterations: 0,
+      },
+    };
+  }
+
+  const costMatrix = buildCostMatrix(allNodes);
 
   // Step 2: Nearest Neighbor heuristic (start from node 0 = user location)
   const initialTour = nearestNeighbor(costMatrix, 0);
@@ -338,7 +373,7 @@ export function optimizeRoute(
     segmentDurations,
     totalEstimatedTimeMinutes,
     algorithm: {
-      name: "Nearest Neighbor + 2-opt (Crowd-Aware TSP)",
+      name: crowdAware ? "Nearest Neighbor + 2-opt (Crowd-Aware TSP)" : "Nearest Neighbor + 2-opt (Shortest Distance TSP)",
       initialCost: Math.round(initialCost * 100) / 100,
       optimizedCost: Math.round(optimizedCost * 100) / 100,
       improvementPercent,

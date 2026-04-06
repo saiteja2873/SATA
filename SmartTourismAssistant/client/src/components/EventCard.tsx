@@ -3,6 +3,7 @@ import { Calendar, MapPin, Image as ImageIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import RatingBadge from "@/components/RatingBadge";
 
 interface EventCardProps {
   id: string;
@@ -87,6 +88,14 @@ export default function EventCard({
         <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
           <MapPin className="h-4 w-4" />
           <span data-testid={`text-city-${id}`}>{city}</span>
+        </div>
+
+        {/* User Reviews Rating */}
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium">Community Rating</span>
+            <RatingBadge placeName={name} showCount={true} />
+          </div>
         </div>
 
         {description && (

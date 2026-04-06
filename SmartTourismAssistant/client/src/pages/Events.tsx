@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import EventCard from "@/components/EventCard";
+import PlaceReviews from "@/components/PlaceReviews";
+import RatingBadge from "@/components/RatingBadge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -133,23 +135,29 @@ export default function Events() {
       </div>
 
       <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogTitle>{selectedEvent?.name}</DialogTitle>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogTitle className="flex items-center justify-between">
+            <span>{selectedEvent?.name}</span>
+            <RatingBadge placeName={selectedEvent?.name || ""} showCount={true} />
+          </DialogTitle>
           <DialogDescription asChild>
-            <div>
-              <div className="mb-4">{selectedEvent?.description}</div>
+            <div className="space-y-6">
+              <div>
+                <p className="text-foreground">{selectedEvent?.description}</p>
+              </div>
+              
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <strong>When</strong>
-                  <div>{selectedEvent ? new Date(selectedEvent.date).toLocaleString() : ""}</div>
-                  {selectedEvent?.start_local && <div>{selectedEvent.start_local} — {selectedEvent.end_local}</div>}
+                <div className="space-y-2">
+                  <h4 className="font-semibold">When</h4>
+                  <div className="text-sm">{selectedEvent ? new Date(selectedEvent.date).toLocaleString() : ""}</div>
+                  {selectedEvent?.start_local && <div className="text-sm">{selectedEvent.start_local} — {selectedEvent.end_local}</div>}
                 </div>
-                <div>
-                  <strong>Details</strong>
-                  <div>Category: {selectedEvent?.category}</div>
-                  <div>Attendance (pred): {selectedEvent?.phq_attendance ?? "—"}</div>
-                  <div>Predicted spend: {selectedEvent?.predicted_event_spend ?? "—"}</div>
-                  <div>Venue: {selectedEvent?.venue ?? selectedEvent?.place_text ?? "—"}</div>
+                <div className="space-y-2">
+                  <h4 className="font-semibold">Details</h4>
+                  <div className="text-sm">Category: {selectedEvent?.category}</div>
+                  <div className="text-sm">Attendance (pred): {selectedEvent?.phq_attendance ?? "—"}</div>
+                  <div className="text-sm">Predicted spend: {selectedEvent?.predicted_event_spend ?? "—"}</div>
+                  <div className="text-sm">Venue: {selectedEvent?.venue ?? selectedEvent?.place_text ?? "—"}</div>
                   {selectedEvent?.lat && selectedEvent?.lng && (
                     <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
                       <MapPin className="h-4 w-4" />
@@ -164,6 +172,17 @@ export default function Events() {
                   )}
                 </div>
               </div>
+
+              {/* User Reviews Section */}
+              {selectedEvent?.name && (
+                <div className="border-t pt-6">
+                  <h3 className="text-lg font-semibold mb-4">Community Reviews</h3>
+                  <PlaceReviews 
+                    placeName={selectedEvent.name} 
+                    placeType="event"
+                  />
+                </div>
+              )}
             </div>
           </DialogDescription>
         </DialogContent>

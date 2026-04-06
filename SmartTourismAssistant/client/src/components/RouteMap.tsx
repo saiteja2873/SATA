@@ -51,26 +51,47 @@ const userIcon = createMarkerIcon("#10b981"); // green
 
 /**
  * Fetch actual road route geometry from OSRM (free, no API key).
- * Takes an array of {lat, lng} waypoints and returns decoded coordinates.
+ * Fetches each leg separately to handle long-distance routes that may
+ * fail when sent as a single multi-waypoint request.
  */
 async function fetchOSRMRoute(
   waypoints: Array<{ lat: number; lng: number }>
 ): Promise<LatLngExpression[]> {
   if (waypoints.length < 2) return [];
 
-  // OSRM expects coordinates as lng,lat pairs separated by semicolons
-  const coords = waypoints.map((p) => `${p.lng},${p.lat}`).join(";");
-  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+  const allCoords: LatLngExpression[] = [];
 
-  const res = await fetch(url);
-  if (!res.ok) return [];
+  // Fetch each leg independently
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const from = waypoints[i];
+    const to = waypoints[i + 1];
+    const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
 
-  const data = await res.json();
-  if (!data.routes || data.routes.length === 0) return [];
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
 
-  // OSRM returns GeoJSON coordinates as [lng, lat] — flip to [lat, lng] for Leaflet
-  const geojsonCoords: [number, number][] = data.routes[0].geometry.coordinates;
-  return geojsonCoords.map(([lng, lat]) => [lat, lng] as LatLngExpression);
+      const data = await res.json();
+      if (!data.routes || data.routes.length === 0) continue;
+
+      const geojsonCoords: [number, number][] = data.routes[0].geometry.coordinates;
+      const legCoords = geojsonCoords.map(([lng, lat]) => [lat, lng] as LatLngExpression);
+
+      // Skip the first point of subsequent legs to avoid duplicates
+      if (allCoords.length > 0 && legCoords.length > 0) {
+        allCoords.push(...legCoords.slice(1));
+      } else {
+        allCoords.push(...legCoords);
+      }
+    } catch {
+      // If a leg fails, add a straight line for that segment
+      allCoords.push([from.lat, from.lng] as LatLngExpression);
+      allCoords.push([to.lat, to.lng] as LatLngExpression);
+    }
+  }
+
+  return allCoords;
 }
 
 /** Auto-fit the map viewport to show all points */

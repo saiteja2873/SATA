@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Loader2, MapPin, Sparkles, Star, Users, DollarSign, Clock, TrendingUp, Calendar, Navigation, Tag, X, BarChart3, Route } from "lucide-react";
 import RecommendationCard from "@/components/RecommendationCard";
+import PlaceReviews from "@/components/PlaceReviews";
+import RatingBadge from "@/components/RatingBadge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -454,6 +456,11 @@ export default function Recommendations() {
                 <Route className="h-4 w-4 mr-2" />
                 Get Optimized Route
               </Button>
+
+              <Separator />
+
+              {/* Reviews Section */}
+              <PlaceReviews placeName={selectedPlace.name} placeType="attraction" />
             </>
           )}
         </DialogContent>

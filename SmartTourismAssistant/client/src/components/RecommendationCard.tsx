@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Star, Users, DollarSign, Clock, TrendingUp, Sparkles, Calendar } from "lucide-react";
+import RatingBadge from "@/components/RatingBadge";
 
 interface RecommendationCardProps {
   place: {
@@ -133,6 +134,14 @@ export default function RecommendationCard({ place, onClick }: RecommendationCar
             >
               {(place.crowdLevel || "N/A").toUpperCase()}
             </Badge>
+          </div>
+        </div>
+
+        {/* User Reviews Rating */}
+        <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">User Reviews</span>
+            <RatingBadge placeName={place.name} showCount={true} />
           </div>
         </div>
 

@@ -108,10 +108,18 @@ router.get("/route/plan", async (req, res) => {
 
     const optimized = optimizeRoute(
       { lat: userLat, lng: userLng },
-      routeNodes
+      routeNodes,
+      optimize  // crowd-aware when optimize=true, shortest distance when false
     );
 
-    // Step 3: Build the response with algorithm metadata
+    // Step 3: Get actual road distances using OSRM for the optimized route
+    const waypoints = [
+      { lat: userLat, lng: userLng },
+      ...optimized.orderedStops.map(s => ({ lat: s.lat, lng: s.lng })),
+    ];
+    const roadData = await getRoadDistances(waypoints);
+
+    // Step 4: Build the response with real road distances
     const orderedDestinations = optimized.orderedStops.map((stop, index) => {
       const detail = destinationDetails.find(d => d.name === stop.name);
       return {
@@ -119,8 +127,8 @@ router.get("/route/plan", async (req, res) => {
         lat: stop.lat,
         lng: stop.lng,
         description: detail?.description || "",
-        distanceKm: optimized.segmentDistances[index] || 0,
-        estimatedTimeMinutes: optimized.segmentDurations[index] || 0,
+        distanceKm: roadData.segmentDistances[index] ?? optimized.segmentDistances[index] ?? 0,
+        estimatedTimeMinutes: roadData.segmentDurations[index] ?? optimized.segmentDurations[index] ?? 0,
         crowdLevel: stop.crowdLevel || "Medium",
         order: index + 1,
       };
@@ -134,14 +142,16 @@ router.get("/route/plan", async (req, res) => {
       .filter(d => d.crowdLevel === "High" || d.crowdLevel === "Very High")
       .map(d => `${d.name} has ${d.crowdLevel} crowd levels — consider visiting early morning or late afternoon`);
 
-    const totalHours = Math.floor(optimized.totalEstimatedTimeMinutes / 60);
-    const totalMins = optimized.totalEstimatedTimeMinutes % 60;
+    const totalDistKm = roadData.totalDistanceKm ?? optimized.totalDistanceKm;
+    const totalTimeMins = roadData.totalDurationMinutes ?? optimized.totalEstimatedTimeMinutes;
+    const totalHours = Math.floor(totalTimeMins / 60);
+    const totalMins = Math.round(totalTimeMins % 60);
 
     const routeInfo: RouteInfo = {
       startLocation: userLocation,
       destinations: orderedDestinations,
       optimizedRoute: optimized.orderedStops.map(s => s.name),
-      totalDistance: `${optimized.totalDistanceKm} km`,
+      totalDistance: `${totalDistKm} km`,
       estimatedTime: totalHours > 0 ? `${totalHours}h ${totalMins}m` : `${totalMins}m`,
       directions: `Optimized route from ${userLocation}: ${optimized.orderedStops.map((s, i) => `${i + 1}. ${s.name}`).join(" → ")}`,
       tips,
@@ -180,9 +190,9 @@ Example format:
 }
 
 /**
- * Use LLM to get real-world coordinates, descriptions, and crowd info
- * for each destination name. The LLM is used for data retrieval only —
- * route optimization is handled by our custom algorithm.
+ * Get destination details by:
+ * 1. Geocoding each place via Nominatim (deterministic, stable coordinates)
+ * 2. Using LLM only for metadata (description, crowd level, type, rating)
  */
 async function getDestinationDetails(
   userLat: number,
@@ -190,42 +200,65 @@ async function getDestinationDetails(
   locationName: string,
   destinations: string[]
 ): Promise<DestinationDetail[]> {
-  const model = await getGeminiModel();
+  // Step 1: Geocode all destinations for stable coordinates
+  const geocoded: Array<{ name: string; lat: number; lng: number }> = [];
+  for (const name of destinations) {
+    const coords = await geocodePlace(name);
+    geocoded.push({ name, lat: coords.lat, lng: coords.lng });
+  }
 
-  const prompt = `You are a tourism data assistant. For each of the following attractions near ${locationName} (coordinates: ${userLat}, ${userLng}), provide factual details.
+  // Step 2: Use LLM only for metadata (description, crowd, rating) — NOT coordinates
+  try {
+    const model = await getGeminiModel();
 
-Attractions: ${destinations.join(", ")}
+    const prompt = `You are a tourism data assistant. For each of the following places, provide a brief description, typical crowd level, category type, and rating. Do NOT provide coordinates.
 
-Return ONLY a valid JSON array, no markdown, no explanation:
+Places: ${destinations.join(", ")}
+
+Return ONLY a valid JSON array, no markdown, no explanation. You MUST return exactly ${destinations.length} item(s):
 [
   {
-    "name": "exact attraction name",
-    "lat": number (realistic latitude),
-    "lng": number (realistic longitude),
+    "name": "exact place name as given",
     "description": "brief 1-line description",
-    "type": "museum|park|temple|monument|market|nature|other",
+    "type": "city|museum|park|temple|monument|market|nature|other",
     "crowdLevel": "Low|Medium|High|Very High",
     "rating": number (1-5)
   }
-]
+]`;
 
-Important:
-- Use real, accurate coordinates for each attraction
-- Crowd level should reflect typical conditions
-- Keep coordinates within reasonable radius of (${userLat}, ${userLng})`;
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const clean = text.replace(/```json|```/g, "").trim();
+    const metadata = JSON.parse(clean) as Array<{
+      name: string;
+      description?: string;
+      type?: string;
+      crowdLevel?: string;
+      rating?: number;
+    }>;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
-  const clean = text.replace(/```json|```/g, "").trim();
-
-  try {
-    return JSON.parse(clean) as DestinationDetail[];
-  } catch {
-    // Fallback: return destinations with approximate coordinates
-    return destinations.map((name, i) => ({
-      name,
-      lat: userLat + (Math.random() - 0.5) * 0.05,
-      lng: userLng + (Math.random() - 0.5) * 0.05,
+    // Merge geocoded coords with LLM metadata
+    return geocoded.map((g) => {
+      const meta = metadata.find(
+        (m) => m.name.toLowerCase() === g.name.toLowerCase()
+      ) || metadata[geocoded.indexOf(g)];
+      return {
+        name: g.name,
+        lat: g.lat,
+        lng: g.lng,
+        description: meta?.description || "",
+        type: meta?.type,
+        crowdLevel: (meta?.crowdLevel as DestinationDetail["crowdLevel"]) || "Medium",
+        rating: meta?.rating,
+      };
+    });
+  } catch (err) {
+    console.error("getDestinationDetails LLM metadata error:", err);
+    // Fallback: return geocoded coordinates with default metadata
+    return geocoded.map((g) => ({
+      name: g.name,
+      lat: g.lat,
+      lng: g.lng,
       description: "",
       crowdLevel: "Medium" as const,
     }));
@@ -247,6 +280,88 @@ async function generateRouteTips(locationName: string, stopNames: string[]): Pro
   } catch {
     return ["Start early to avoid crowds", "Carry water and comfortable shoes", "Check local weather before heading out"];
   }
+}
+
+/**
+ * Get actual road distances and durations between ordered waypoints using OSRM.
+ * Falls back to null values if the API is unavailable.
+ */
+async function getRoadDistances(
+  waypoints: Array<{ lat: number; lng: number }>
+): Promise<{
+  segmentDistances: (number | null)[];
+  segmentDurations: (number | null)[];
+  totalDistanceKm: number | null;
+  totalDurationMinutes: number | null;
+}> {
+  const empty = {
+    segmentDistances: waypoints.slice(1).map(() => null),
+    segmentDurations: waypoints.slice(1).map(() => null),
+    totalDistanceKm: null,
+    totalDurationMinutes: null,
+  };
+
+  if (waypoints.length < 2) return empty;
+
+  try {
+    // OSRM expects coordinates as lng,lat (not lat,lng)
+    const coords = waypoints.map(w => `${w.lng},${w.lat}`).join(";");
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=false&annotations=distance,duration&steps=false`;
+
+    const response = await fetch(url, {
+      headers: { "User-Agent": "SmartTourismAssistant/1.0" },
+    });
+
+    if (!response.ok) {
+      console.error("OSRM API error:", response.status);
+      return empty;
+    }
+
+    const data = (await response.json()) as any;
+    if (data.code !== "Ok" || !data.routes || data.routes.length === 0) {
+      console.error("OSRM returned no routes:", data.code);
+      return empty;
+    }
+
+    const route = data.routes[0];
+    const legs = route.legs as Array<{ distance: number; duration: number }>;
+
+    const segmentDistances = legs.map(leg => Math.round((leg.distance / 1000) * 100) / 100); // meters → km
+    const segmentDurations = legs.map(leg => Math.round(leg.duration / 60)); // seconds → minutes
+    const totalDistanceKm = Math.round((route.distance / 1000) * 100) / 100;
+    const totalDurationMinutes = Math.round(route.duration / 60);
+
+    return { segmentDistances, segmentDurations, totalDistanceKm, totalDurationMinutes };
+  } catch (err) {
+    console.error("OSRM road distance error:", err);
+    return empty;
+  }
+}
+
+/**
+ * Forward geocode a place name to coordinates using Nominatim.
+ */
+async function geocodePlace(placeName: string): Promise<{ lat: number; lng: number }> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(placeName)}&limit=1`,
+      {
+        headers: { "User-Agent": "SmartTourismAssistant/1.0" },
+      }
+    );
+
+    if (response.ok) {
+      const data = (await response.json()) as any[];
+      if (data.length > 0) {
+        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      }
+    }
+  } catch (err) {
+    console.error("Geocoding error for", placeName, err);
+  }
+
+  // Last resort fallback — return 0,0 which will be obvious on a map
+  return { lat: 0, lng: 0 };
 }
 
 async function getLocationName(lat: number, lng: number): Promise<string> {
