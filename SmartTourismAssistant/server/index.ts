@@ -26,6 +26,22 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false }));
 
+// Add CORS headers for external resources
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Max-Age", "3600");
+  res.header("Content-Security-Policy", "img-src 'self' data: https:; default-src 'self' 'unsafe-inline' https:");
+  
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+  
+  next();
+});
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;

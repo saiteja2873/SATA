@@ -14,26 +14,30 @@ export function getQdrantClient(): QdrantClient {
   return qdrantClient;
 }
 
-export function getEmbeddingModel() {
+function getGenAI(): GoogleGenerativeAI {
   if (!genAI) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error("GEMINI_API_KEY is missing for embeddings");
     }
     genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   }
-  return genAI.getGenerativeModel({ model: "text-embedding-004" });
+  return genAI;
 }
 
 /**
  * Generate embeddings for a text query using Google's Gemini API
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
+  const ai = getGenAI();
+  
+  // Use the correct Gemini embedding model name
+  const model = ai.getGenerativeModel({ model: "gemini-embedding-001" });
+  
   try {
-    const model = getEmbeddingModel();
     const result = await model.embedContent(text);
     return result.embedding.values;
-  } catch (error) {
-    console.error("Error generating embedding:", error);
+  } catch (error: any) {
+    console.error("Error generating embedding:", error?.message || error);
     throw new Error("Failed to generate embedding");
   }
 }

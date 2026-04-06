@@ -16,7 +16,7 @@ if (!GEMINI_API_KEY) {
 }
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
+const embeddingModel = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
 
 async function generateEmbedding(text: string): Promise<number[]> {
   const result = await embeddingModel.embedContent(text);

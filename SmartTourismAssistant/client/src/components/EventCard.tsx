@@ -1,4 +1,5 @@
-import { Calendar, MapPin } from "lucide-react";
+import { useState } from "react";
+import { Calendar, MapPin, Image as ImageIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,21 @@ export default function EventCard({
   description = null,
   onOpen,
 }: EventCardProps) {
+  const [imageError, setImageError] = useState(false);
   const handleOpen = () => onOpen?.(id);
+
+  const colors = [
+    "bg-blue-500",
+    "bg-purple-500",
+    "bg-pink-500",
+    "bg-indigo-500",
+    "bg-cyan-500",
+    "bg-rose-500",
+  ];
+  
+  // Use a consistent color based on event name
+  const colorIndex = id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+  const bgColor = colors[colorIndex];
 
   return (
     <Card
@@ -39,8 +54,20 @@ export default function EventCard({
       }}
       data-testid={`card-event-${id}`}
     >
-      <div className="relative h-40 w-full">
-        <img src={image} alt={name} className="h-full w-full object-cover" />
+      <div className={`relative h-40 w-full overflow-hidden ${bgColor}`}>
+        {!imageError && image ? (
+          <img
+            src={image}
+            alt={name}
+            className="h-full w-full object-cover"
+            onError={() => setImageError(true)}
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center bg-gradient-to-br from-slate-300 to-slate-400 dark:from-slate-700 dark:to-slate-800">
+            <ImageIcon className="h-12 w-12 text-slate-500 opacity-50" />
+          </div>
+        )}
       </div>
       <CardContent className="p-6">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">

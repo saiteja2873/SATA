@@ -55,7 +55,8 @@ export default function Recommendations() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch recommendations");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to fetch recommendations");
       }
 
       return response.json();
@@ -155,7 +156,14 @@ export default function Recommendations() {
       {error && (
         <Alert variant="destructive" className="mb-6">
           <AlertDescription>
-            Failed to fetch recommendations. Please try again.
+            <div className="space-y-2">
+              <p className="font-semibold">{(error as Error)?.message || "Failed to fetch recommendations"}</p>
+              {(error as Error)?.message?.includes("Qdrant") && (
+                <p className="text-sm">
+                  Make sure Qdrant is running at http://localhost:6333 and has been seeded with place data.
+                </p>
+              )}
+            </div>
           </AlertDescription>
         </Alert>
       )}

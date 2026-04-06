@@ -121,7 +121,7 @@ export default function Events() {
               name={event.name}
               date={event.date}
               city={event.venue ?? event.place_text ?? ""}
-              image="/placeholder.jpg"
+              image={(event as any).image ?? "/placeholder.jpg"}
               tags={(event.phq_labels ?? [event.category ?? "event"]).map((t) =>
                 typeof t === "string" ? t : (t as any)?.label ?? String(t)
               )}

@@ -1,11 +1,27 @@
 import { Router, Request, Response } from "express";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const router = Router();
+
+// Lazy-load Gemini
+let genAIInstance: any = null;
+let modelInstance: any = null;
+
+async function getGeminiModel() {
+  if (!genAIInstance) {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is missing in environment variables");
+    }
+    genAIInstance = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    modelInstance = genAIInstance.getGenerativeModel({ model: "gemini-2.5-flash" });
+  }
+  return modelInstance;
+}
 
 // GET /api/events
 router.get("/events", async (req: Request, res: Response) => {
   try {
-    const { lat, lng, radius_km = "150", size = "5" } = req.query;
+    const { lat, lng, radius_km = "300", size = "5" } = req.query;
 
     if (!lat || !lng) {
       return res.status(400).json({
@@ -36,16 +52,24 @@ router.get("/events", async (req: Request, res: Response) => {
       return p;
     };
 
-    // attempt sequence: 30d with rank -> 90d with rank -> 90d without rank -> no upper bound without rank
+    // attempt sequence: 30d no-rank -> 90d no-rank -> unlimited no-rank (expanded to 300km radius)
     const attempts: Array<{ label: string; startLte?: string; includeLocalRank?: boolean }> = [
-      { label: "30d+rank", startLte, includeLocalRank: true },
-      { label: "90d+rank", startLte: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString(), includeLocalRank: true },
+      { label: "30d-no-rank", startLte, includeLocalRank: false },
       { label: "90d-no-rank", startLte: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString(), includeLocalRank: false },
       { label: "none-no-rank", includeLocalRank: false },
     ];
 
     let data: any = null;
     let results: any[] = [];
+
+    // Verify API key is set
+    if (!process.env.PREDICTHQ_API_KEY) {
+      console.error("PREDICTHQ_API_KEY is not set in environment variables");
+      return res.status(500).json({ error: "PredictHQ API key not configured" });
+    }
+
+    const apiKey = process.env.PREDICTHQ_API_KEY;
+    console.log(`Using PredictHQ API key: ${apiKey.substring(0, 10)}...`);
 
     for (const attempt of attempts) {
       const params = buildParams({ startLte: attempt.startLte, includeLocalRank: attempt.includeLocalRank });
@@ -55,14 +79,20 @@ router.get("/events", async (req: Request, res: Response) => {
       const response = await fetch(url, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${process.env.PREDICTHQ_API_KEY!}`,
-          Accept: "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "Accept": "application/json",
         },
       });
 
+      const status = response.status;
+      console.log(`PredictHQ response status: ${status}`);
+
       if (!response.ok) {
         const text = await response.text();
-        console.error("PredictHQ error:", text);
+        console.error(`PredictHQ error (${status}):`, text);
+        if (status === 401) {
+          console.error("❌ UNAUTHORIZED: Your PredictHQ API key is invalid or expired. Check your .env file.");
+        }
         // Continue to next attempt instead of failing hard
         continue;
       }
@@ -159,8 +189,25 @@ router.get("/events", async (req: Request, res: Response) => {
         place_text,
         lat: elat,
         lng: elng,
+        image: "", // Will be filled later
       };
     });
+
+    // Generate images for all events (async)
+    await Promise.all(
+      events.map(async (ev, idx) => {
+        try {
+          ev.image = await generateEventImage(
+            ev.name,
+            ev.category ?? "event",
+            ev.description
+          );
+        } catch (err) {
+          console.error("Error generating image for event:", ev.name, err);
+          ev.image = getDefaultEventImage(ev.category ?? "event");
+        }
+      })
+    );
 
     // enrich events without venue using reverse geocoding where lat/lng is available
     await Promise.all(
@@ -201,5 +248,65 @@ router.get("/events", async (req: Request, res: Response) => {
     });
   }
 });
+
+// Generate event image URL using SERP API
+async function generateEventImage(eventName: string, category: string, description: string | null): Promise<string> {
+  try {
+    // First try to get images from SERP API
+    if (process.env.SERP_API_KEY) {
+      const searchQuery = `${eventName} ${category}`;
+      
+      try {
+        const serpUrl = new URL("https://serpapi.com/search");
+        serpUrl.searchParams.append("q", searchQuery);
+        serpUrl.searchParams.append("api_key", process.env.SERP_API_KEY);
+        serpUrl.searchParams.append("tbm", "isch"); // Image search
+        serpUrl.searchParams.append("num", "10");
+
+        const serpResponse = await fetch(serpUrl.toString());
+        
+        if (serpResponse.ok) {
+          const serpData = await serpResponse.json();
+          
+          // Extract image URLs from SERP results
+          const images = serpData.images_results || [];
+          
+          if (images.length > 0) {
+            // Return first valid image URL
+            for (const img of images) {
+              if (img.original) {
+                console.log(`SERP image found for "${eventName}": ${img.original.substring(0, 80)}...`);
+                return img.original;
+              }
+            }
+          }
+        }
+      } catch (serpErr) {
+        console.warn("SERP API call failed, falling back to category-based images:", serpErr);
+      }
+    }
+    
+    // Fallback: use category-based images if SERP API fails or is not configured
+    return getDefaultEventImage(category);
+  } catch (err) {
+    console.error("Error generating event image:", err);
+    return getDefaultEventImage(category);
+  }
+}
+
+// Fallback image generation based on category
+function getDefaultEventImage(category: string): string {
+  const categoryMap: { [key: string]: string } = {
+    "festivals": "https://images.pexels.com/photos/1597318/pexels-photo-1597318.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "community": "https://images.pexels.com/photos/1321725/pexels-photo-1321725.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "performing-arts": "https://images.pexels.com/photos/1181676/pexels-photo-1181676.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "concerts": "https://images.pexels.com/photos/1813220/pexels-photo-1813220.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "conferences": "https://images.pexels.com/photos/2258536/pexels-photo-2258536.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "sports": "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=600",
+    "expos": "https://images.pexels.com/photos/1040881/pexels-photo-1040881.jpeg?auto=compress&cs=tinysrgb&w=600",
+  };
+  
+  return categoryMap[category] || "https://images.pexels.com/photos/1697912/pexels-photo-1697912.jpeg?auto=compress&cs=tinysrgb&w=600";
+}
 
 export default router;
