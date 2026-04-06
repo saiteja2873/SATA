@@ -153,7 +153,7 @@ export default function Forecast() {
           <CardTitle>Select Attraction & Date</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] items-end">
             <div className="space-y-2">
               <Label htmlFor="attraction">Attraction</Label>
               <Select
@@ -161,7 +161,7 @@ export default function Forecast() {
                 onValueChange={setSelectedAttraction}
               >
                 <SelectTrigger id="attraction" data-testid="select-attraction">
-                  <SelectValue placeholder="Select attraction" />
+                  <SelectValue placeholder={attractionsLoading ? "Loading attractions..." : "Select attraction"} />
                 </SelectTrigger>
                 <SelectContent>
                   {attractions.map(attr => (
@@ -172,12 +172,6 @@ export default function Forecast() {
                   ))}
                 </SelectContent>
               </Select>
-              {attractionsLoading && (
-                <p className="text-xs text-muted-foreground">Loading nearby attractions...</p>
-              )}
-              {attractionsError && (
-                <p className="text-xs text-red-600">Failed to load attractions. Try again.</p>
-              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="date">Date</Label>
@@ -189,10 +183,10 @@ export default function Forecast() {
                 data-testid="input-forecast-date"
               />
             </div>
-            <div className="flex items-end">
+            <div>
               <Button
                 onClick={handleForecast}
-                className="w-full"
+                className="w-full md:w-auto md:px-8"
                 data-testid="button-generate-forecast"
                 disabled={isLoading || !selectedDate || !attraction || attractionsLoading}
               >
@@ -207,18 +201,21 @@ export default function Forecast() {
               </Button>
             </div>
           </div>
+          {attractionsError && (
+            <p className="text-xs text-red-600">Failed to load attractions. Try again.</p>
+          )}
           {userLocation && (
-            <div className="flex items-center gap-2 rounded-lg bg-green-50 p-2">
+            <div className="flex items-center gap-2 rounded-lg bg-green-50 dark:bg-green-950 p-2">
               <MapPin className="h-4 w-4 text-green-600" />
-              <span className="text-sm text-green-700">
-                Location detected - showing attractions near you
+              <span className="text-sm text-green-700 dark:text-green-300">
+                Location detected — showing attractions near you
               </span>
             </div>
           )}
           {!userLocation && locationLoading && (
-            <div className="flex items-center gap-2 rounded-lg bg-blue-50 p-2">
+            <div className="flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-950 p-2">
               <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-              <span className="text-sm text-blue-700">
+              <span className="text-sm text-blue-700 dark:text-blue-300">
                 Getting your location...
               </span>
             </div>

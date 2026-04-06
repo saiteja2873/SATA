@@ -110,7 +110,20 @@ router.get("/events", async (req: Request, res: Response) => {
     }
 
     if (!Array.isArray(results) || results.length === 0) {
-      return res.json([]);
+      // PredictHQ returned nothing — fall back to Gemini AI-generated events
+      console.log("📭 PredictHQ empty — using Gemini AI fallback for events");
+      try {
+        const aiEvents = await generateAIEvents(
+          Number(lat),
+          Number(lng),
+          Number(radius_km),
+          Number(size)
+        );
+        return res.json(aiEvents);
+      } catch (aiErr) {
+        console.error("Gemini AI events fallback failed:", aiErr);
+        return res.json([]);
+      }
     }
 
     const events = results.map((e: any) => {
@@ -292,6 +305,90 @@ async function generateEventImage(eventName: string, category: string, descripti
     console.error("Error generating event image:", err);
     return getDefaultEventImage(category);
   }
+}
+
+/**
+ * Gemini AI fallback: generate plausible upcoming events near the user's location
+ */
+async function generateAIEvents(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  limit: number
+): Promise<any[]> {
+  const model = await getGeminiModel();
+
+  const now = new Date();
+  const prompt = `You are an expert on local events and festivals in India.
+Generate ${Math.min(limit, 8)} realistic upcoming events/festivals that would typically occur near latitude ${lat}, longitude ${lng} (within ${radiusKm}km) in the coming weeks.
+
+Today's date: ${now.toISOString().split("T")[0]}
+
+RULES:
+- Return ONLY a valid JSON array, no markdown, no explanation
+- Use real festival/event names that actually happen in this region
+- Dates should be in the near future (next 1-3 months)
+- Include a mix of categories: festivals, community, performing-arts, concerts
+
+Each item schema:
+{
+  "id": "ai-evt-<index>",
+  "name": "Event Name",
+  "description": "2-3 sentence description",
+  "date": "ISO date string",
+  "start_local": "ISO date string",
+  "end_local": "ISO date string or null",
+  "timezone": "Asia/Kolkata",
+  "category": "festivals" | "community" | "performing-arts" | "concerts",
+  "rank": <number 40-90>,
+  "local_rank": <number 40-90>,
+  "phq_attendance": <number>,
+  "duration": <seconds>,
+  "predicted_event_spend": null,
+  "phq_labels": ["label1", "label2"],
+  "venue": "Venue or City name",
+  "place_hierarchy": [],
+  "place_text": "City, State",
+  "lat": <latitude>,
+  "lng": <longitude>,
+  "image": "",
+  "source": "ai"
+}`;
+
+  const result = await model.generateContent(prompt);
+  const text = result.response.text();
+
+  // Robust JSON parsing
+  let cleaned = text.replace(/```json\s*|```\s*/g, "").trim();
+  let events: any[];
+  try {
+    events = JSON.parse(cleaned);
+  } catch {
+    cleaned = cleaned.replace(/\/\/[^\n]*/g, "");
+    cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    events = match ? JSON.parse(match[0]) : [];
+  }
+
+  if (!Array.isArray(events)) events = [];
+
+  // Fetch images for AI events via SERP
+  await Promise.all(
+    events.map(async (ev: any) => {
+      try {
+        ev.image = await generateEventImage(
+          ev.name,
+          ev.category ?? "event",
+          ev.description
+        );
+      } catch {
+        ev.image = getDefaultEventImage(ev.category ?? "event");
+      }
+    })
+  );
+
+  console.log(`✅ Gemini generated ${events.length} AI events`);
+  return events;
 }
 
 // Fallback image generation based on category

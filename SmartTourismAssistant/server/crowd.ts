@@ -85,24 +85,9 @@ async function generateCrowdForecast(
   const dayOfWeek = targetDate.toLocaleDateString('en-US', { weekday: 'long' });
   const month = targetDate.toLocaleDateString('en-US', { month: 'long' });
   
-  // Fetch nearby events if location is provided
-  let eventsContext = "";
+  let locationContext = "";
   if (location) {
-    try {
-      const eventsRes = await fetch(
-        `http://localhost:5000/api/events?lat=${location.lat}&lng=${location.lng}&radius_km=50&size=5`
-      );
-      if (eventsRes.ok) {
-        const events = await eventsRes.json();
-        if (events.length > 0) {
-          eventsContext = `\n\nNearby events:\n${events.map((e: any) => 
-            `- ${e.name} on ${new Date(e.date).toLocaleDateString()} at ${e.venue || 'location'}`
-          ).join('\n')}`;
-        }
-      }
-    } catch (err) {
-      console.warn("Could not fetch events for context:", err);
-    }
+    locationContext = `\nLocation coordinates: ${location.lat}, ${location.lng}`;
   }
 
   const prompt = `
@@ -111,7 +96,9 @@ You are an expert tourism and crowd forecasting AI. Generate a detailed 7-day cr
 Attraction: ${attraction}
 Target Date: ${targetDate.toLocaleDateString()}
 Day of Week: ${dayOfWeek}
-Month: ${month}${eventsContext}
+Month: ${month}${locationContext}
+
+Also consider any major local festivals, public holidays, or events happening around this date and location that could affect crowd levels.
 
 Provide a comprehensive forecast analysis in the following JSON format:
 {
@@ -165,9 +152,8 @@ Provide realistic estimates based on typical tourism patterns. Output ONLY valid
 
   const result = await model.generateContent(prompt);
   const text = result.response.text();
-  const clean = text.replace(/```json|```/g, "").trim();
   
-  return JSON.parse(clean);
+  return safeParseGeminiJSON(text);
 }
 
 async function generateSimpleCrowdPrediction(query: string, features: any) {
@@ -193,9 +179,45 @@ Output ONLY valid JSON, no explanations.
 
   const result = await model.generateContent(prompt);
   const text = result.response.text();
-  const clean = text.replace(/```json|```/g, "").trim();
   
-  return JSON.parse(clean);
+  return safeParseGeminiJSON(text);
+}
+
+/**
+ * Robustly parse JSON from Gemini responses, handling common issues:
+ * - markdown code fences
+ * - trailing commas
+ * - single-line comments
+ * - single quotes instead of double quotes
+ */
+function safeParseGeminiJSON(raw: string): any {
+  // Strip code fences
+  let cleaned = raw.replace(/```json\s*|```\s*/g, "").trim();
+
+  // Try direct parse first
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // continue to cleanup
+  }
+
+  // Remove single-line comments (// ...)
+  cleaned = cleaned.replace(/\/\/[^\n]*/g, "");
+  // Remove trailing commas before } or ]
+  cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
+
+  // Try to extract the JSON object or array
+  const objMatch = cleaned.match(/\{[\s\S]*\}/);
+  const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+  const match = objMatch || arrMatch;
+
+  if (match) {
+    cleaned = match[0];
+    // Re-apply trailing comma cleanup
+    cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
+  }
+
+  return JSON.parse(cleaned);
 }
 
 export default router;
