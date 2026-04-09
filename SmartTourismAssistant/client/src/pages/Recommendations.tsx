@@ -86,7 +86,7 @@ export default function Recommendations() {
       return response.json();
     },
     enabled: !!activeQuery,
-    placeholderData: (prev) => prev,
+    staleTime: 0,
   });
 
   const handleSearch = (e: React.FormEvent) => {

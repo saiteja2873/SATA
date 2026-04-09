@@ -75,7 +75,7 @@ export default function Forecast() {
 
   // Inject attraction from URL params
   useEffect(() => {
-    if (urlAttraction && !injectedAttraction) {
+    if (urlAttraction && urlAttraction !== injectedAttraction?.name) {
       const id = `url-${urlAttraction.toLowerCase().replace(/\s+/g, "-")}`;
       setInjectedAttraction({
         id,
@@ -84,6 +84,8 @@ export default function Forecast() {
         lng: urlLng ? Number(urlLng) : 0,
       });
       setSelectedAttraction(id);
+      setShouldFetch(false);
+      autoTriggered.current = false;
     }
   }, [urlAttraction]);
 
