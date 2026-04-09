@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import EventCard from "@/components/EventCard";
 import PlaceReviews from "@/components/PlaceReviews";
 import RatingBadge from "@/components/RatingBadge";
@@ -29,10 +30,11 @@ interface Event {
 }
 
 export default function Events() {
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocation, setUserLocation] = usePersistedState<{ lat: number; lng: number } | null>("events-userLocation", null);
 
   // Get user location from sessionStorage
   useEffect(() => {
+    if (userLocation) return;
     // Try to get location from geolocation
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -65,6 +67,8 @@ export default function Events() {
       return res.json() as Promise<Event[]>;
     },
     enabled: !!userLocation,
+    staleTime: 0, // always refetch on mount
+    gcTime: 0,    // don't keep in cache after unmount
   });
 
   return (

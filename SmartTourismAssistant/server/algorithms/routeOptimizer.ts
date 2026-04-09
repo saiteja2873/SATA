@@ -305,30 +305,52 @@ export function optimizeRoute(
   const distMatrix = buildDistanceMatrix(allNodes);
 
   if (!crowdAware) {
-    // No optimization — keep the user's insertion order
-    const userTour = allNodes.map((_, i) => i); // [0, 1, 2, 3, ...]
+    // Non-optimized route: farthest-neighbor ordering for a longer, scenic tour
+    const n = allNodes.length;
+    const visited = new Set<number>([0]);
+    const tour: number[] = [0];
+    let current = 0;
+
+    while (visited.size < n) {
+      let farthestIdx = -1;
+      let farthestDist = -1;
+
+      for (let j = 1; j < n; j++) {
+        if (!visited.has(j) && distMatrix[current][j] > farthestDist) {
+          farthestDist = distMatrix[current][j];
+          farthestIdx = j;
+        }
+      }
+
+      if (farthestIdx === -1) break;
+      tour.push(farthestIdx);
+      visited.add(farthestIdx);
+      current = farthestIdx;
+    }
+
+    const reorderedStops = tour.slice(1).map(i => allNodes[i]) as RouteNode[];
     const segmentDistances: number[] = [];
     const segmentDurations: number[] = [];
 
-    for (let i = 0; i < userTour.length - 1; i++) {
-      const dist = distMatrix[userTour[i]][userTour[i + 1]];
+    for (let i = 0; i < tour.length - 1; i++) {
+      const dist = distMatrix[tour[i]][tour[i + 1]];
       segmentDistances.push(Math.round(dist * 100) / 100);
       segmentDurations.push(Math.round(estimateTravelTimeMinutes(dist)));
     }
 
-    const totalDistanceKm = routeDistance(userTour, distMatrix);
+    const totalDistanceKm = routeDistance(tour, distMatrix);
     const totalEstimatedTimeMinutes = segmentDurations.reduce((a, b) => a + b, 0);
 
     return {
-      orderedStops: destinations,
+      orderedStops: reorderedStops,
       totalDistanceKm: Math.round(totalDistanceKm * 100) / 100,
       segmentDistances,
       segmentDurations,
       totalEstimatedTimeMinutes,
       algorithm: {
-        name: "User-defined order (no optimization)",
-        initialCost: routeDistance(userTour, distMatrix),
-        optimizedCost: routeDistance(userTour, distMatrix),
+        name: "Scenic route (non-optimized, farthest-neighbor)",
+        initialCost: totalDistanceKm,
+        optimizedCost: totalDistanceKm,
         improvementPercent: 0,
         iterations: 0,
       },

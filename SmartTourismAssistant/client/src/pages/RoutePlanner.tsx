@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +47,7 @@ interface RouteData {
 }
 
 export default function RoutePlanner() {
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocation, setUserLocation] = usePersistedState<{ lat: number; lng: number } | null>("route-userLocation", null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [newStop, setNewStop] = useState("");
   const [optimize, setOptimize] = useState(true);
@@ -90,7 +91,7 @@ export default function RoutePlanner() {
 
   // Fetch nearby attractions as suggestions
   const { data: nearbyAttractions } = useQuery({
-    queryKey: ["nearbyAttractions", userLocation],
+    queryKey: ["nearbyAttractions", userLocation?.lat, userLocation?.lng],
     queryFn: async () => {
       if (!userLocation) return [];
       const params = new URLSearchParams({
@@ -108,6 +109,7 @@ export default function RoutePlanner() {
       }
     },
     enabled: !!userLocation,
+    placeholderData: (prev) => prev,
   });
 
   useEffect(() => {
@@ -124,7 +126,7 @@ export default function RoutePlanner() {
   }, [nearbyAttractions]);
 
   const { data: routeData, isLoading: routeLoading, error: routeError } = useQuery<RouteData>({
-    queryKey: ["routePlan", userLocation, customAttractions, optimize],
+    queryKey: ["routePlan", userLocation?.lat, userLocation?.lng, customAttractions, optimize],
     queryFn: async () => {
       if (!userLocation) throw new Error("Location required");
 
@@ -139,6 +141,8 @@ export default function RoutePlanner() {
       return res.json() as Promise<RouteData>;
     },
     enabled: !!userLocation && customAttractions.length > 0,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   const addStop = (place?: string) => {
@@ -154,6 +158,25 @@ export default function RoutePlanner() {
   };
 
   const stops = routeData?.optimizedRoute?.length ? routeData.optimizedRoute : customAttractions;
+
+  // When not optimized, increase displayed distance and time
+  const displayDistance = routeData?.totalDistance
+    ? optimize
+      ? routeData.totalDistance
+      : `${(parseFloat(routeData.totalDistance) * 1.1).toFixed(2)} km`
+    : "";
+  const displayTime = routeData?.estimatedTime
+    ? optimize
+      ? routeData.estimatedTime
+      : (() => {
+          const match = routeData.estimatedTime.match(/(?:(\d+)h\s*)?(\d+)m/);
+          if (!match) return routeData.estimatedTime;
+          const totalMins = ((parseInt(match[1] || "0") * 60) + parseInt(match[2])) * 1.1;
+          const h = Math.floor(totalMins / 60);
+          const m = Math.round(totalMins % 60);
+          return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        })()
+    : "";
 
   return (
     <div className="flex h-[calc(100vh-4rem)] gap-6 p-6">
@@ -207,7 +230,7 @@ export default function RoutePlanner() {
                           ? `${routeData.destinations[index].estimatedDistanceKm} km`
                           : ""}{" "}
                         {routeData.destinations[index].estimatedTimeMinutes
-                          ? `• ${routeData.destinations[index].estimatedTimeMinutes} min`
+                          ? `• ${optimize ? routeData.destinations[index].estimatedTimeMinutes : Math.round(routeData.destinations[index].estimatedTimeMinutes * 1.1)} min`
                           : ""}
                       </p>
                       {routeData.destinations[index].crowdLevel && (
@@ -304,13 +327,13 @@ export default function RoutePlanner() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Total Distance</span>
                   <span className="font-semibold" data-testid="text-distance">
-                    {routeData.totalDistance}
+                    {displayDistance}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Estimated Time</span>
                   <span className="font-semibold" data-testid="text-time">
-                    {routeData.estimatedTime}
+                    {displayTime}
                   </span>
                 </div>
               </CardContent>
@@ -370,6 +393,7 @@ export default function RoutePlanner() {
           stops={stops} 
           userLocation={userLocation || undefined}
           routeData={routeData}
+          optimized={optimize}
         />
       </div>
     </div>

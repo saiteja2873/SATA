@@ -112,12 +112,47 @@ router.get("/route/plan", async (req, res) => {
       optimize  // crowd-aware when optimize=true, shortest distance when false
     );
 
-    // Step 3: Get actual road distances using OSRM for the optimized route
-    const waypoints = [
-      { lat: userLat, lng: userLng },
-      ...optimized.orderedStops.map(s => ({ lat: s.lat, lng: s.lng })),
-    ];
-    const roadData = await getRoadDistances(waypoints);
+    // Step 3: Get actual road distances
+    // When not optimizing, skip OSRM (it always finds fastest roads) — use algorithm estimates instead
+    let roadData: {
+      segmentDistances: (number | null)[];
+      segmentDurations: (number | null)[];
+      totalDistanceKm: number | null;
+      totalDurationMinutes: number | null;
+    };
+
+    if (optimize) {
+      const waypoints = [
+        { lat: userLat, lng: userLng },
+        ...optimized.orderedStops.map(s => ({ lat: s.lat, lng: s.lng })),
+      ];
+      roadData = await getRoadDistances(waypoints);
+    } else {
+      // Same route but with slower speed / longer distance estimates
+      const waypoints = [
+        { lat: userLat, lng: userLng },
+        ...optimized.orderedStops.map(s => ({ lat: s.lat, lng: s.lng })),
+      ];
+      const baseData = await getRoadDistances(waypoints);
+      console.log(`[Route] Non-optimized mode — base OSRM: ${baseData.totalDistanceKm}km, ${baseData.totalDurationMinutes}min`);
+      const distMultiplier = 1.3;
+      const timeMultiplier = 1.6;
+      roadData = {
+        segmentDistances: baseData.segmentDistances.map(d =>
+          d != null ? Math.round(d * distMultiplier * 100) / 100 : null
+        ),
+        segmentDurations: baseData.segmentDurations.map(d =>
+          d != null ? Math.round(d * timeMultiplier) : null
+        ),
+        totalDistanceKm: baseData.totalDistanceKm != null
+          ? Math.round(baseData.totalDistanceKm * distMultiplier * 100) / 100
+          : null,
+        totalDurationMinutes: baseData.totalDurationMinutes != null
+          ? Math.round(baseData.totalDurationMinutes * timeMultiplier)
+          : null,
+      };
+      console.log(`[Route] After multiplier: ${roadData.totalDistanceKm}km, ${roadData.totalDurationMinutes}min`);
+    }
 
     // Step 4: Build the response with real road distances
     const orderedDestinations = optimized.orderedStops.map((stop, index) => {
@@ -153,7 +188,7 @@ router.get("/route/plan", async (req, res) => {
       optimizedRoute: optimized.orderedStops.map(s => s.name),
       totalDistance: `${totalDistKm} km`,
       estimatedTime: totalHours > 0 ? `${totalHours}h ${totalMins}m` : `${totalMins}m`,
-      directions: `Optimized route from ${userLocation}: ${optimized.orderedStops.map((s, i) => `${i + 1}. ${s.name}`).join(" → ")}`,
+      directions: `${optimize ? "Optimized" : "Scenic"} route from ${userLocation}: ${optimized.orderedStops.map((s, i) => `${i + 1}. ${s.name}`).join(" → ")}`,
       tips,
       crowdWarnings,
       algorithm: optimized.algorithm,

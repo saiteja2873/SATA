@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "wouter";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
@@ -57,12 +58,12 @@ interface Attraction {
 }
 
 export default function Forecast() {
-  const [selectedAttraction, setSelectedAttraction] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState("");
-  const [shouldFetch, setShouldFetch] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [selectedAttraction, setSelectedAttraction] = usePersistedState<string | null>("forecast-selectedAttraction", null);
+  const [selectedDate, setSelectedDate] = usePersistedState("forecast-selectedDate", "");
+  const [shouldFetch, setShouldFetch] = usePersistedState("forecast-shouldFetch", false);
+  const [userLocation, setUserLocation] = usePersistedState<{ lat: number; lng: number } | null>("forecast-userLocation", null);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [injectedAttraction, setInjectedAttraction] = useState<Attraction | null>(null);
+  const [injectedAttraction, setInjectedAttraction] = usePersistedState<Attraction | null>("forecast-injectedAttraction", null);
   const autoTriggered = useRef(false);
 
   // Read query params from URL (e.g., from Recommendations page)
@@ -120,7 +121,7 @@ export default function Forecast() {
   }, []);
 
   const { data: attractionsData, isLoading: attractionsLoading, error: attractionsError, refetch: refetchAttractions } = useQuery<{ attractions: Attraction[] }>({
-    queryKey: ["attractions", userLocation],
+    queryKey: ["attractions", userLocation?.lat, userLocation?.lng],
     queryFn: async () => {
       const params = new URLSearchParams({
         ...(userLocation && { lat: String(userLocation.lat), lng: String(userLocation.lng) }),
@@ -168,6 +169,8 @@ export default function Forecast() {
       return res.json() as Promise<ForecastData>;
     },
     enabled: shouldFetch && !!attraction && !!selectedDate,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   const handleForecast = () => {

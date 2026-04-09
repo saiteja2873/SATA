@@ -1,6 +1,6 @@
 import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient, localStoragePersister } from "./lib/queryClient";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -25,7 +25,6 @@ function Router() {
       <Route path="/reviews" component={Reviews} />
       <Route path="/events" component={Events} />
       <Route path="/recommendations" component={Recommendations} />
-      {/* <Route path="/location" component={Location} /> */}
       <Route component={NotFound} />
     </Switch>
   );
@@ -38,7 +37,20 @@ export default function App() {
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister: localStoragePersister,
+        dehydrateOptions: {
+          shouldDehydrateQuery: (query) => {
+            // Don't persist events queries — always fetch fresh
+            const key = query.queryKey[0];
+            if (key === "events" || key === "crowdForecast" || key === "routePlan" || key === "nearbyAttractions") return false;
+            return query.state.status === "success";
+          },
+        },
+      }}
+    >
       <TooltipProvider>
         <SidebarProvider style={style as React.CSSProperties}>
           <div className="flex h-screen w-full">
@@ -59,6 +71,6 @@ export default function App() {
         </SidebarProvider>
         <Toaster />
       </TooltipProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }

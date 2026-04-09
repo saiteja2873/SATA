@@ -15,6 +15,7 @@ interface Stop {
 interface RouteMapProps {
   stops: string[] | Stop[];
   userLocation?: { lat: number; lng: number };
+  optimized?: boolean;
   routeData?: {
     startLocation?: string;
     destinations?: Array<{ name: string; lat?: number; lng?: number; description?: string; crowdLevel?: string; distanceKm?: number }>;
@@ -115,7 +116,7 @@ function FitBounds({ points }: { points: Array<{ lat: number; lng: number }> }) 
   return null;
 }
 
-export default function RouteMap({ stops, userLocation, routeData }: RouteMapProps) {
+export default function RouteMap({ stops, userLocation, routeData, optimized = true }: RouteMapProps) {
   const mapRef = useRef(null);
   const [roadRoute, setRoadRoute] = useState<LatLngExpression[]>([]);
 
@@ -187,7 +188,7 @@ export default function RouteMap({ stops, userLocation, routeData }: RouteMapPro
         {routeLine.length > 1 && (
           <Polyline
             pathOptions={{
-              color: "#3b82f6",
+              color: optimized ? "#3b82f6" : "#f59e0b",
               weight: 5,
               opacity: 0.8,
             }}

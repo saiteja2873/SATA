@@ -267,15 +267,18 @@ async function generateEventImage(eventName: string, category: string, descripti
   try {
     // First try to get images from SERP API
     if (process.env.SERP_API_KEY) {
-      const searchQuery = `${eventName} ${category}`;
+      // Build a more specific search query for better image results
+      const searchQuery = `${eventName} ${category} event India`;
       
       try {
         const serpUrl = new URL("https://serpapi.com/search");
         serpUrl.searchParams.append("q", searchQuery);
         serpUrl.searchParams.append("api_key", process.env.SERP_API_KEY);
         serpUrl.searchParams.append("tbm", "isch"); // Image search
-        serpUrl.searchParams.append("num", "10");
+        serpUrl.searchParams.append("num", "5");
+        serpUrl.searchParams.append("safe", "active");
 
+        console.log(`SERP query for "${eventName}": q="${searchQuery}"`);
         const serpResponse = await fetch(serpUrl.toString());
         
         if (serpResponse.ok) {

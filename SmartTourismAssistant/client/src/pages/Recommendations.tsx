@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Loader2, MapPin, Sparkles, Star, Users, DollarSign, Clock, TrendingUp, Calendar, Navigation, Tag, X, BarChart3, Route } from "lucide-react";
@@ -19,9 +20,9 @@ import {
 import { Separator } from "@/components/ui/separator";
 
 export default function Recommendations() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeQuery, setActiveQuery] = useState("");
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [searchQuery, setSearchQuery] = usePersistedState("rec-searchQuery", "");
+  const [activeQuery, setActiveQuery] = usePersistedState("rec-activeQuery", "");
+  const [userLocation, setUserLocation] = usePersistedState<{ lat: number; lng: number } | null>("rec-userLocation", null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   const [, navigate] = useLocation();
@@ -62,7 +63,7 @@ export default function Recommendations() {
 
   // Fetch recommendations
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["recommendations", activeQuery, userLocation],
+    queryKey: ["recommendations", activeQuery, userLocation?.lat, userLocation?.lng],
     queryFn: async () => {
       if (!activeQuery) return null;
 
@@ -85,6 +86,7 @@ export default function Recommendations() {
       return response.json();
     },
     enabled: !!activeQuery,
+    placeholderData: (prev) => prev,
   });
 
   const handleSearch = (e: React.FormEvent) => {
